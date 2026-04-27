@@ -1,0 +1,509 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_spacing.dart';
+import '../../../../core/constants/app_typography.dart';
+import '../../../../core/constants/app_border_radius.dart';
+import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../shared/providers/auth_state_provider.dart';
+import '../../../../shared/providers/theme_provider.dart';
+
+// ── User info provider ─────────────────────────────────────
+final _userInfoProvider = FutureProvider.autoDispose<Map<String, String>>((ref) async {
+  const storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  return {
+    'fullName': await storage.read(key: 'user_full_name') ?? 'User',
+    'email': await storage.read(key: 'user_email') ?? '',
+    'tier': await storage.read(key: 'user_subscription_tier') ?? 'TRIAL',
+  };
+});
+
+class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userInfoAsync = ref.watch(_userInfoProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+
+    return Scaffold(
+      backgroundColor: context.appBackground,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            // ── Header ───────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenHorizontal,
+                  AppSpacing.xl,
+                  AppSpacing.screenHorizontal,
+                  AppSpacing.xl,
+                ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => context.pop(),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: context.appSurfaceL2,
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.full),
+                        ),
+                        child: Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 16,
+                          color: context.appTextPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Text(
+                      'Settings',
+                      style: AppTypography.h2.copyWith(
+                        color: context.appTextPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenHorizontal,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  // ── Profile Card ─────────────────────────
+                  userInfoAsync.when(
+                    loading: () => _SkeletonBox(height: 100),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (info) {
+                      final fullName = info['fullName'] ?? 'User';
+                      final email = info['email'] ?? '';
+                      final tier = info['tier'] ?? 'TRIAL';
+                      final initial = fullName.isNotEmpty
+                          ? fullName[0].toUpperCase()
+                          : 'U';
+
+                      return Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF05687B), Color(0xFF023D49)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(AppRadius.xl),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF05687B)
+                                  .withValues(alpha: 0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                          border: context.isDark ? Border.all(color: context.appBorder) : null,
+                        ),
+                        child: Row(
+                          children: [
+                            // Avatar
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: context.appSurface.withValues(alpha: 0.2),
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.full),
+                                border: Border.all(
+                                  color:
+                                      context.appSurface.withValues(alpha: 0.3),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  initial,
+                                  style: AppTypography.h2.copyWith(
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            // Info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    fullName,
+                                    style: AppTypography.h4.copyWith(
+                                      color: AppColors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    email,
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.white
+                                          .withValues(alpha: 0.7),
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.white
+                                          .withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(
+                                          AppRadius.full),
+                                    ),
+                                    child: Text(
+                                      tier == 'PRO'
+                                          ? '⭐ PRO'
+                                          : '🕐 TRIAL',
+                                      style: AppTypography.label.copyWith(
+                                        color: AppColors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ── Preferences ───────────────────────────
+                  _SectionLabel(label: 'Preferences'),
+                  const SizedBox(height: AppSpacing.xs),
+
+                  _SettingsCard(
+                    children: [
+                      _SettingsRow(
+                        icon: isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
+                        iconColor: context.appBrand,
+                        label: 'Dark Mode',
+                        trailing: CupertinoSwitch(
+                          value: isDark,
+                          activeTrackColor: context.appBrand,
+                          onChanged: (_) =>
+                              ref.read(themeModeProvider.notifier).toggle(),
+                        ),
+                      ),
+                      _Divider(),
+                      // TODO v1.x: wire language selector
+                      _SettingsRow(
+                        icon: Icons.language_rounded,
+                        iconColor: AppColors.info,
+                        label: 'Language',
+                        trailing: Text(
+                          'العربية / FR',
+                          style: AppTypography.body.copyWith(
+                            color: context.appTextSecondary,
+                          ),
+                        ),
+                        showChevron: true,
+                        onTap: () => _showComingSoon(context),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // TODO Phase 3: wire notification preferences (replace this placeholder)
+
+                  // ── Account ───────────────────────────────
+                  _SectionLabel(label: 'Account'),
+                  const SizedBox(height: AppSpacing.xs),
+
+                  _SettingsCard(
+                    children: [
+                      // TODO Phase 12: wire Privacy Policy page
+                      _SettingsRow(
+                        icon: Icons.shield_outlined,
+                        iconColor: AppColors.success,
+                        label: 'Privacy Policy',
+                        showChevron: true,
+                        onTap: () => _showComingSoon(context),
+                      ),
+                      _Divider(),
+                      // TODO Phase 12: wire Terms of Service page
+                      _SettingsRow(
+                        icon: Icons.description_outlined,
+                        iconColor: AppColors.info,
+                        label: 'Terms of Service',
+                        showChevron: true,
+                        onTap: () => _showComingSoon(context),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ── Logout ────────────────────────────────
+                  _SettingsCard(
+                    children: [
+                      const _LogoutRow(),
+                    ],
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Version
+                  Center(
+                    child: Text(
+                      'DIDO v1.0.0',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showComingSoon(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Bientôt disponible')),
+  );
+}
+
+// ── Reusable components ────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: AppSpacing.xs),
+      child: Text(
+        label.toUpperCase(),
+        style: AppTypography.label.copyWith(
+          color: AppColors.textTertiary,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: context.appSurface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: context.appCardShadow,
+        border: context.isDark ? Border.all(color: context.appBorder) : null,
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.label,
+    this.iconColor = AppColors.brand,
+    this.trailing,
+    this.showChevron = false,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+  final Widget? trailing;
+  final bool showChevron;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Icon(icon, size: 18, color: iconColor),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.body.copyWith(
+                  color: context.appTextPrimary,
+                ),
+              ),
+            ),
+            if (trailing != null) trailing!,
+            if (showChevron) ...[
+              const SizedBox(width: AppSpacing.xs),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: context.appTextTertiary,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 68),
+      child: Divider(height: 1, color: AppColors.border),
+    );
+  }
+}
+
+class _LogoutRow extends ConsumerWidget {
+  const _LogoutRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () async {
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+            ),
+            title: Text('Logout', style: AppTypography.h4),
+            content: Text(
+              'Are you sure you want to logout?',
+              style: AppTypography.body.copyWith(
+                color: context.appTextSecondary,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'Cancel',
+                  style: AppTypography.body.copyWith(
+                    color: context.appTextSecondary,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  'Logout',
+                  style: AppTypography.body.copyWith(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirm == true && context.mounted) {
+          await ref.read(authStateProvider.notifier).logout();
+          if (context.mounted) context.go('/auth/login');
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.errorBg,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                size: 18,
+                color: AppColors.error,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Text(
+              'Logout',
+              style: AppTypography.body.copyWith(
+                color: AppColors.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonBox extends StatelessWidget {
+  const _SkeletonBox({required this.height});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceL1,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+    );
+  }
+}

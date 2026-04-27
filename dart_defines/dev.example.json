@@ -1,0 +1,7 @@
+{
+  "SENTRY_ENABLED": "false",
+  "SENTRY_DSN": "",
+  "SENTRY_ENV": "development",
+  "SENTRY_RELEASE": "dido-flutter@1.0.0+1",
+  "SENTRY_FORCE_ENABLE": "false"
+}
