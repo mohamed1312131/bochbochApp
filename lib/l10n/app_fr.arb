@@ -1,0 +1,43 @@
+{
+  "@@locale": "fr",
+  "@@last_modified": "2026-04-28T00:00:00.000Z",
+
+  "loginWelcomeBack": "Bon retour",
+  "@loginWelcomeBack": {
+    "description": "Login screen title — greeting for returning users"
+  },
+
+  "loginSubtitle": "Connectez-vous à votre compte DIDO",
+  "@loginSubtitle": {
+    "description": "Login screen subtitle"
+  },
+
+  "loginEmailLabel": "Email",
+  "@loginEmailLabel": {
+    "description": "Email field label"
+  },
+
+  "loginEmailHint": "votre@email.com",
+  "@loginEmailHint": {
+    "description": "Email field placeholder"
+  },
+
+  "loginEmailRequired": "L'email est requis",
+  "loginEmailInvalid": "Entrez un email valide",
+
+  "loginPasswordLabel": "Mot de passe",
+  "loginPasswordRequired": "Le mot de passe est requis",
+  "loginPasswordMinLength": "Minimum 6 caractères",
+
+  "loginForgotPassword": "Mot de passe oublié ?",
+  "loginSignInButton": "Se connecter",
+  "loginOrSignInWith": "Ou se connecter avec",
+  "loginNoAccountQuestion": "Pas encore de compte ? ",
+  "loginSignUpLink": "S'inscrire",
+
+  "settingsLanguageTitle": "Langue",
+  "settingsLanguageFrench": "Français",
+  "settingsLanguageArabic": "العربية",
+  "settingsLanguageEnglish": "English",
+  "settingsComingSoon": "Bientôt disponible"
+}

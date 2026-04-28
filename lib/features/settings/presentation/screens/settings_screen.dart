@@ -8,6 +8,7 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/constants/app_border_radius.dart';
 import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../core/i18n/l10n_context.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
 import '../../../../shared/providers/theme_provider.dart';
 
@@ -211,19 +212,20 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       _Divider(),
-                      // TODO v1.x: wire language selector
+                      // Language picker — only French active in v1; Arabic/English greyed.
+                      // Activation in v1.x by adding ARB files + persisting choice.
                       _SettingsRow(
                         icon: Icons.language_rounded,
                         iconColor: AppColors.info,
                         label: 'Language',
                         trailing: Text(
-                          'العربية / FR',
+                          context.l10n.settingsLanguageFrench,
                           style: AppTypography.body.copyWith(
                             color: context.appTextSecondary,
                           ),
                         ),
                         showChevron: true,
-                        onTap: () => _showComingSoon(context),
+                        onTap: () => _showLanguagePicker(context),
                       ),
                     ],
                   ),
@@ -293,6 +295,82 @@ class SettingsScreen extends ConsumerWidget {
 void _showComingSoon(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(content: Text('Bientôt disponible')),
+  );
+}
+
+void _showLanguagePicker(BuildContext context) {
+  final l10n = context.l10n;
+  showModalBottomSheet<void>(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              l10n.settingsLanguageTitle,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // French — active
+          ListTile(
+            leading: Icon(Icons.check_circle, color: context.appBrand),
+            title: Text(l10n.settingsLanguageFrench),
+            onTap: () => Navigator.of(sheetContext).pop(),
+          ),
+          // Arabic — coming soon
+          ListTile(
+            enabled: false,
+            leading: const Icon(Icons.lock_outline, color: Colors.grey),
+            title: Text(
+              l10n.settingsLanguageArabic,
+              style: const TextStyle(color: Colors.grey),
+            ),
+            trailing: Text(
+              l10n.settingsComingSoon,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showComingSoon(context);
+            },
+          ),
+          // English — coming soon
+          ListTile(
+            enabled: false,
+            leading: const Icon(Icons.lock_outline, color: Colors.grey),
+            title: Text(
+              l10n.settingsLanguageEnglish,
+              style: const TextStyle(color: Colors.grey),
+            ),
+            trailing: Text(
+              l10n.settingsComingSoon,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showComingSoon(context);
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    ),
   );
 }
 

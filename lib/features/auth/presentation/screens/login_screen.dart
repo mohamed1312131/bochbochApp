@@ -7,6 +7,7 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/constants/app_border_radius.dart';
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/config/feature_flags.dart';
+import '../../../../core/i18n/l10n_context.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/google_signin_button.dart';
 
@@ -40,6 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final loginState = ref.watch(loginProvider);
     final isLoading = loginState.status == LoginStatus.loading;
 
@@ -86,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // Title
                 Center(
                   child: Text(
-                    'Welcome back',
+                    l10n.loginWelcomeBack,
                     style: AppTypography.h1.copyWith(
                       color: context.appTextPrimary,
                     ),
@@ -95,7 +97,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: AppSpacing.xs),
                 Center(
                   child: Text(
-                    'Sign in to your DIDO account',
+                    l10n.loginSubtitle,
                     style: AppTypography.body.copyWith(
                       color: context.appTextSecondary,
                     ),
@@ -106,7 +108,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Email
                 Text(
-                  'Email',
+                  l10n.loginEmailLabel,
                   style: AppTypography.body.copyWith(
                     color: context.appTextPrimary,
                     fontWeight: FontWeight.w500,
@@ -121,12 +123,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     textInputAction: TextInputAction.next,
                     autocorrect: false,
                     style: AppTypography.body,
-                    decoration: const InputDecoration(
-                      hintText: 'your@email.com',
+                    decoration: InputDecoration(
+                      hintText: l10n.loginEmailHint,
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Email is required';
-                      if (!v.contains('@')) return 'Enter a valid email';
+                      if (v == null || v.isEmpty) return l10n.loginEmailRequired;
+                      if (!v.contains('@')) return l10n.loginEmailInvalid;
                       return null;
                     },
                   ),
@@ -136,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Password
                 Text(
-                  'Password',
+                  l10n.loginPasswordLabel,
                   style: AppTypography.body.copyWith(
                     color: context.appTextPrimary,
                     fontWeight: FontWeight.w500,
@@ -167,8 +169,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Password is required';
-                      if (v.length < 6) return 'Minimum 6 characters';
+                      if (v == null || v.isEmpty) return l10n.loginPasswordRequired;
+                      if (v.length < 6) return l10n.loginPasswordMinLength;
                       return null;
                     },
                   ),
@@ -181,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: GestureDetector(
                     onTap: () => context.go('/auth/forgot-password'),
                     child: Text(
-                      'Forgot password?',
+                      l10n.loginForgotPassword,
                       style: AppTypography.body.copyWith(
                         color: context.appBrand,
                         fontWeight: FontWeight.w600,
@@ -237,7 +239,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           )
                         : Text(
-                            'Sign In',
+                            l10n.loginSignInButton,
                             style: AppTypography.bodyLarge.copyWith(
                               color: AppColors.white,
                               fontWeight: FontWeight.w600,
@@ -258,7 +260,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           horizontal: AppSpacing.sm,
                         ),
                         child: Text(
-                          'Ou se connecter avec',
+                          l10n.loginOrSignInWith,
                           style: AppTypography.bodySmall.copyWith(
                             color: context.appTextTertiary,
                           ),
@@ -288,13 +290,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onTap: () => context.go('/auth/register'),
                     child: RichText(
                       text: TextSpan(
-                        text: "Don't have an account? ",
+                        text: l10n.loginNoAccountQuestion,
                         style: AppTypography.body.copyWith(
                           color: context.appTextSecondary,
                         ),
                         children: [
                           TextSpan(
-                            text: 'Sign Up',
+                            text: l10n.loginSignUpLink,
                             style: AppTypography.body.copyWith(
                               color: context.appBrand,
                               fontWeight: FontWeight.w600,
