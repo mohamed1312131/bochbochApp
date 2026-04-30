@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../core/observability/posthog_service.dart';
 
 const _accessTokenKey = 'access_token';
 const _storage = FlutterSecureStorage(
@@ -56,6 +57,7 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _storage.delete(key: _accessTokenKey);
+    await PostHogService.reset();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/constants/app_border_radius.dart';
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/i18n/l10n_context.dart';
+import '../../../../features/boutiques/presentation/boutique_providers.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
 import '../../../../shared/providers/theme_provider.dart';
 
@@ -117,29 +119,8 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         child: Row(
                           children: [
-                            // Avatar
-                            Container(
-                              width: 64,
-                              height: 64,
-                              decoration: BoxDecoration(
-                                color: context.appSurface.withValues(alpha: 0.2),
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.full),
-                                border: Border.all(
-                                  color:
-                                      context.appSurface.withValues(alpha: 0.3),
-                                  width: 2,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  initial,
-                                  style: AppTypography.h2.copyWith(
-                                    color: AppColors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
+                            // Avatar — boutique logo (or initial-letter fallback)
+                            _BoutiqueAvatar(initial: initial),
                             const SizedBox(width: AppSpacing.md),
                             // Info
                             Expanded(
@@ -188,6 +169,23 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       );
                     },
+                  ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ── Boutique ──────────────────────────────
+                  _SectionLabel(label: 'Boutique'),
+                  const SizedBox(height: AppSpacing.xs),
+                  _SettingsCard(
+                    children: [
+                      _SettingsRow(
+                        icon: Icons.store_outlined,
+                        iconColor: context.appBrand,
+                        label: 'Modifier ma boutique',
+                        showChevron: true,
+                        onTap: () => context.push('/boutiques/edit'),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: AppSpacing.xl),
@@ -581,6 +579,67 @@ class _SkeletonBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surfaceL1,
         borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+    );
+  }
+}
+class _BoutiqueAvatar extends ConsumerWidget {
+  const _BoutiqueAvatar({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final boutique = ref.watch(currentBoutiqueProvider).valueOrNull;
+    final logoUrl = boutique?.logoUrl;
+
+    final fallback = Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: context.appSurface.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(
+          color: context.appSurface.withValues(alpha: 0.3),
+          width: 2,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          initial,
+          style: AppTypography.h2.copyWith(color: AppColors.white),
+        ),
+      ),
+    );
+
+    if (logoUrl == null || logoUrl.isEmpty) return fallback;
+
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(
+          color: context.appSurface.withValues(alpha: 0.3),
+          width: 2,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        child: CachedNetworkImage(
+          imageUrl: logoUrl,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.white,
+              ),
+            ),
+          ),
+          errorWidget: (_, __, ___) => fallback,
+        ),
       ),
     );
   }

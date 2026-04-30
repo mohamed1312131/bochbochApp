@@ -95,7 +95,15 @@ class AuthInterceptor extends Interceptor {
   }
 
   Future<void> _clearTokens() async {
-    await _storage.delete(key: _accessTokenKey);
-    await _storage.delete(key: _refreshTokenKey);
+    // Keep this list in sync with AuthRepository.logout().
+    await Future.wait([
+      _storage.delete(key: _accessTokenKey),
+      _storage.delete(key: _refreshTokenKey),
+      _storage.delete(key: 'current_user_id'),
+      _storage.delete(key: 'user_full_name'),
+      _storage.delete(key: 'user_email'),
+      _storage.delete(key: 'user_subscription_tier'),
+      _storage.delete(key: 'onboarding_user_id'),
+    ]);
   }
 }

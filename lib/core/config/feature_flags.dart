@@ -34,4 +34,15 @@ class FeatureFlags {
 
   static const bool sentryForceEnable =
       bool.fromEnvironment('SENTRY_FORCE_ENABLE', defaultValue: false);
+
+  /// PostHog analytics. Disabled by default; turned on in dart_defines/dev.json.
+  static const bool posthogEnabled =
+      bool.fromEnvironment('POSTHOG_ENABLED', defaultValue: false);
+
+  static const String posthogApiKey =
+      String.fromEnvironment('POSTHOG_API_KEY', defaultValue: '');
+
+  static const String posthogHost =
+      String.fromEnvironment('POSTHOG_HOST',
+          defaultValue: 'https://eu.i.posthog.com');
 }

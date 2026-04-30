@@ -7,9 +7,17 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/constants/app_border_radius.dart';
 import '../../../../core/theme/app_theme_extension.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/observability/posthog_service.dart';
+import '../../../../shared/providers/auth_state_provider.dart';
 import '../../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
+
+const _onboardingUserIdKey = 'onboarding_user_id';
+const _onboardingStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 
 class VerifyEmailScreen extends ConsumerStatefulWidget {
   const VerifyEmailScreen({super.key});
@@ -60,8 +68,17 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     });
 
     try {
-      await AuthRepository().verifyEmail(userId: userId, otp: _otp);
-      if (mounted) context.go('/auth/login?verified=true');
+      final response =
+          await AuthRepository().verifyEmail(userId: userId, otp: _otp);
+      await ref
+          .read(authStateProvider.notifier)
+          .saveToken(response.accessToken);
+      await _onboardingStorage.write(
+        key: _onboardingUserIdKey,
+        value: response.user.id,
+      );
+      await PostHogService.identify(response.user.id);
+      if (mounted) context.go('/home');
     } on AppException catch (e) {
       setState(() => _error = e.message);
     } finally {

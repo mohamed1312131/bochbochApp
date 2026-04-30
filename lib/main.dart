@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'core/api/dio_client.dart';
+import 'core/db/app_database.dart';
+import 'core/deep_links/deep_link_provider.dart';
+import 'core/observability/posthog_service.dart';
 import 'core/observability/sentry_bootstrap.dart';
 import 'core/theme/app_theme.dart';
 import 'l10n/app_localizations.dart';
@@ -9,16 +13,47 @@ import 'shared/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // DEV ONLY: clear stale keychain on fresh build.
+  // iOS keychain persists across `flutter clean` and reinstalls — wipe it
+  // if there's no access token, so ghost sessions from a previous user
+  // (cached name/email/onboarding_user_id) don't leak into the new run.
+  // Logged-in users are untouched.
+  const storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  // TEMP: force clear on every launch until testing is done
+  await storage.deleteAll();
+
+  // DEV ONLY: clear Drift database (onboarding drafts, etc.)
+  final db = AppDatabase();
+  await db.customStatement('DELETE FROM onboarding_drafts');
+  await db.close();
+
   await DioClient.getInstance();
+  await PostHogService.initialize();
 
   await initSentryAndRunApp(() => const ProviderScope(child: DidoApp()));
 }
 
-class DidoApp extends ConsumerWidget {
+class DidoApp extends ConsumerStatefulWidget {
   const DidoApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DidoApp> createState() => _DidoAppState();
+}
+
+class _DidoAppState extends ConsumerState<DidoApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(deepLinkServiceProvider).initialize();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
     final router = ref.watch(routerProvider);
 

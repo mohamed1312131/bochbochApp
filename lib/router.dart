@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'shared/providers/auth_state_provider.dart';
+import 'features/boutiques/presentation/boutique_providers.dart';
+import 'features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'features/boutiques/presentation/screens/edit_boutique_screen.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/register_screen.dart';
 import 'features/auth/presentation/screens/verify_email_screen.dart';
@@ -32,22 +35,62 @@ import 'core/config/feature_flags.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
+  // Build GoRouter ONCE. Use a ValueNotifier as refreshListenable so
+  // redirect re-runs reactively to auth/boutique changes without
+  // recreating the router (which would reset navigation to
+  // initialLocation and yank users off in-flight screens).
+  final notifier = ValueNotifier(0);
+  ref.onDispose(notifier.dispose);
+  ref.listen(authStateProvider, (_, __) => notifier.value++);
+  ref.listen(currentBoutiqueProvider, (_, __) => notifier.value++);
 
   return GoRouter(
     initialLocation: '/home',
+    refreshListenable: notifier,
     // Feed navigation breadcrumbs into Sentry. The bootstrap's
     // beforeBreadcrumb strips the `extra` payload (which carries OTP/email
     // for the password-reset flow) so we don't leak PII into events.
     observers: [SentryNavigatorObserver()],
     redirect: (context, state) {
+      // ref.read inside redirect — we're no longer watching at the
+      // provider level. refreshListenable ticks force redirect to re-run.
+      final authState = ref.read(authStateProvider);
+      final boutiqueAsync = ref.read(currentBoutiqueProvider);
       final isAuth = authState.isAuthenticated;
       final isUnknown = authState.status == AuthStatus.unknown;
-      final isAuthRoute = state.matchedLocation.startsWith('/auth');
+      final loc = state.matchedLocation;
 
       if (isUnknown) return null;
+
+      final isAuthRoute = loc.startsWith('/auth');
+
       if (!isAuth && !isAuthRoute) return '/auth/login';
       if (isAuth && isAuthRoute) return '/home';
+
+      // While boutique is loading, hold authenticated users on /loading
+      // so we can redirect correctly once data arrives. Without this,
+      // the redirect fires with valueOrNull == null and the user lands
+      // on /home before the onboarding gate has a chance to fire.
+      if (isAuth && !isAuthRoute) {
+        // Only mask /home behind /loading on cold start. Don't kick users
+        // off in-flight screens (like /onboarding) when their action
+        // invalidates currentBoutiqueProvider mid-flow.
+        if (boutiqueAsync.isLoading && (loc == '/home' || loc == '/loading')) {
+          return loc == '/loading' ? null : '/loading';
+        }
+        if (boutiqueAsync.hasError && loc == '/home') {
+          return '/onboarding';
+        }
+      }
+
+      // Soft-gate model: authenticated users can freely visit /home and
+      // /onboarding. Home shows a "Configure ta boutique" CTA when the
+      // boutique isn't onboarded yet. The boutique watch is still needed
+      // to know when to release users from /loading.
+      final boutique = boutiqueAsync.valueOrNull;
+      if (isAuth && loc == '/loading' && boutique != null) {
+        return '/home';
+      }
       return null;
     },
     routes: [
@@ -95,6 +138,46 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings',
         name: 'settings',
         builder: (_, __) => const SettingsScreen(),
+      ),
+
+      // Loading placeholder while boutique data resolves post-login.
+      GoRoute(
+        path: '/loading',
+        name: 'loading',
+        builder: (_, __) => const Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      ),
+
+      // Onboarding (Stage 5E)
+      GoRoute(
+        path: '/onboarding',
+        name: 'onboarding',
+        builder: (_, __) => const OnboardingScreen(),
+      ),
+
+      // Boutique edit (Stage 5F)
+      GoRoute(
+        path: '/boutiques/edit',
+        name: 'boutique-edit',
+        builder: (_, __) => const EditBoutiqueScreen(),
+      ),
+
+      // Paymee deep-link landings (placeholder — real screens later)
+      GoRoute(
+        path: '/payment/return',
+        name: 'payment-return',
+        builder: (context, state) => _PaymentReturnPlaceholder(
+          paymentId: state.uri.queryParameters['paymentId'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/payment/cancel',
+        name: 'payment-cancel',
+        builder: (context, state) => _PaymentCancelPlaceholder(
+          paymentId: state.uri.queryParameters['paymentId'] ?? '',
+        ),
       ),
 
       // Full-screen AI Studio flow (no bottom nav)
@@ -301,6 +384,28 @@ class _DidoBottomNav extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PaymentReturnPlaceholder extends StatelessWidget {
+  const _PaymentReturnPlaceholder({required this.paymentId});
+  final String paymentId;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(child: Text('Payment return: $paymentId\n(placeholder)')),
+    );
+  }
+}
+
+class _PaymentCancelPlaceholder extends StatelessWidget {
+  const _PaymentCancelPlaceholder({required this.paymentId});
+  final String paymentId;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(child: Text('Payment cancel: $paymentId\n(placeholder)')),
     );
   }
 }

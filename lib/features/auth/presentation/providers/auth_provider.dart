@@ -1,9 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/observability/posthog_service.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
 import '../../data/auth_repository.dart';
 import '../../data/google_signin_service.dart';
 import '../../domain/auth_models.dart';
+
+const _onboardingUserIdKey = 'onboarding_user_id';
+const _onboardingStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository();
@@ -53,6 +60,11 @@ class LoginNotifier extends StateNotifier<LoginState> {
       await _ref
           .read(authStateProvider.notifier)
           .saveToken(response.accessToken);
+      await _onboardingStorage.write(
+        key: _onboardingUserIdKey,
+        value: response.user.id,
+      );
+      await PostHogService.identify(response.user.id);
       state = state.copyWith(
         status: LoginStatus.success,
         user: response.user,
@@ -78,6 +90,11 @@ class LoginNotifier extends StateNotifier<LoginState> {
       await _ref
           .read(authStateProvider.notifier)
           .saveToken(response.accessToken);
+      await _onboardingStorage.write(
+        key: _onboardingUserIdKey,
+        value: response.user.id,
+      );
+      await PostHogService.identify(response.user.id);
       state = state.copyWith(
         status: LoginStatus.success,
         user: response.user,

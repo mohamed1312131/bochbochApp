@@ -14,7 +14,12 @@ import '../providers/dashboard_provider.dart';
 import '../../domain/dashboard_models.dart';
 import '../providers/profit_provider.dart';
 import '../../domain/profit_models.dart';
+import '../../../boutiques/domain/boutique_models.dart';
+import '../../../boutiques/presentation/boutique_providers.dart';
 import '../../../customers/domain/customer_models.dart';
+import '../../../goals/presentation/goal_providers.dart';
+import '../../../goals/presentation/sheets/create_goal_sheet.dart';
+import '../../../goals/presentation/widgets/goal_card.dart';
 import 'insights_screen.dart';
 
 // ── User name provider ─────────────────────────────────────
@@ -173,10 +178,19 @@ class _TodayView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dashboardAsync = ref.watch(dashboardProvider);
+    final boutiqueAsync = ref.watch(currentBoutiqueProvider);
+    final goalAsync = ref.watch(activeGoalProvider);
+    final boutique = boutiqueAsync.valueOrNull;
+    final showBoutiqueCta = boutique != null && !boutique.isOnboarded;
 
     return RefreshIndicator(
       color: AppColors.brand,
-      onRefresh: () => ref.refresh(dashboardProvider.future),
+      onRefresh: () async {
+        ref.invalidate(activeGoalProvider);
+        ref.invalidate(currentBoutiqueProvider);
+        ref.invalidate(dashboardProvider);
+        await ref.read(dashboardProvider.future);
+      },
       child: CustomScrollView(
         slivers: [
           SliverPadding(
@@ -198,6 +212,35 @@ class _TodayView extends StatelessWidget {
 
                   // Quick actions
                   _QuickActions(),
+                  const SizedBox(height: AppSpacing.md),
+
+                  // Boutique setup CTA — only when not onboarded.
+                  if (showBoutiqueCta) ...[
+                    const NoBoutiqueCard(),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
+
+                  // Goal card.
+                  goalAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (goal) {
+                      if (goal == null) {
+                        return NoGoalCard(
+                          onTap: () async {
+                            await CreateGoalSheet.show(context, ref);
+                            // Always refresh after the sheet closes —
+                            // covers swipe-to-dismiss and the 409 path.
+                            ref.invalidate(activeGoalProvider);
+                          },
+                        );
+                      }
+                      if (goal.kind == 'SELF_REPORT') {
+                        return SelfReportGoalCard(goal: goal);
+                      }
+                      return ActiveGoalCard(goal: goal);
+                    },
+                  ),
                   const SizedBox(height: AppSpacing.md),
 
                   // Low stock

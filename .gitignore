@@ -88,10 +88,11 @@ ios/Runner/GeneratedPluginRegistrant.*
 *.iws
 .idea/
 
-# VS Code — ignored entirely. We use --dart-define-from-file for secrets,
-# not launch.json. If you need shared launch config later, switch to a
-# committed .vscode/launch.json that references a gitignored env file.
-.vscode/
+# VS Code — ignore personal files but commit shared launch config.
+# launch.json is safe to commit because it only references the gitignored
+# dart_defines/dev.json file (where the actual secrets live).
+.vscode/*
+!.vscode/launch.json
 
 # Eclipse
 .classpath

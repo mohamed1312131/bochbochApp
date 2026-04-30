@@ -123,16 +123,34 @@ class AuthRepository {
     }
   }
 
-  Future<void> verifyEmail({
+  Future<LoginResponse> verifyEmail({
     required String userId,
     required String otp,
   }) async {
     try {
       final dio = await _getDio();
-      await dio.post(
+      final response = await dio.post(
         ApiEndpoints.verifyEmail,
         data: {'userId': userId, 'otp': otp},
       );
+      final data = response.data as Map<String, dynamic>;
+      final loginResponse = LoginResponse.fromJson(data);
+
+      await _storage.write(
+          key: _accessTokenKey, value: loginResponse.accessToken);
+      if (loginResponse.refreshToken != null) {
+        await _storage.write(
+            key: _refreshTokenKey, value: loginResponse.refreshToken!);
+      }
+      await _storage.write(key: _userKey, value: loginResponse.user.id);
+      await _storage.write(
+          key: 'user_full_name', value: loginResponse.user.fullName);
+      await _storage.write(key: 'user_email', value: loginResponse.user.email);
+      await _storage.write(
+          key: 'user_subscription_tier',
+          value: loginResponse.user.subscriptionTier);
+
+      return loginResponse;
     } catch (e) {
       throw ErrorHandler.handle(e);
     }
@@ -183,12 +201,16 @@ class AuthRepository {
     } catch (_) {
       // Best effort
     } finally {
-      await _storage.delete(key: _accessTokenKey);
-      await _storage.delete(key: _refreshTokenKey);
-      await _storage.delete(key: _userKey);
-      await _storage.delete(key: 'user_full_name');
-      await _storage.delete(key: 'user_email');
-      await _storage.delete(key: 'user_subscription_tier');
+      // Keep this list in sync with AuthInterceptor._clearTokens().
+      await Future.wait([
+        _storage.delete(key: _accessTokenKey),
+        _storage.delete(key: _refreshTokenKey),
+        _storage.delete(key: _userKey),
+        _storage.delete(key: 'user_full_name'),
+        _storage.delete(key: 'user_email'),
+        _storage.delete(key: 'user_subscription_tier'),
+        _storage.delete(key: 'onboarding_user_id'),
+      ]);
       await (await DioClient.getInstance()).clearCookies();
     }
   }

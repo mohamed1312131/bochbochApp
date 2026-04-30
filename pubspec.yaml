@@ -44,6 +44,12 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.0
 
+  # Deep links (Paymee return / cancel)
+  app_links: ^6.3.2
+
+  # Analytics
+  posthog_flutter: ^4.4.1
+
   # Images
   cached_network_image: ^3.4.1
   image_picker: ^1.1.2
@@ -70,6 +76,7 @@ dev_dependencies:
   riverpod_generator: ^2.4.3
   freezed: ^2.5.7
   json_serializable: ^6.8.0
+  drift_dev: ^2.21.0
 
 flutter:
   uses-material-design: true
