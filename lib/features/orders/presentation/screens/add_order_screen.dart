@@ -2,17 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
+
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
-import '../../../../core/api/dio_client.dart';
-import '../../../products/presentation/providers/product_provider.dart';
-import '../../../products/domain/product_models.dart';
-import '../providers/order_provider.dart';
+import '../../../../shared/widgets/dido_attention_strip.dart';
+import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../domain/order_models.dart';
+import '../providers/order_provider.dart';
+import '../sheets/product_picker_sheet.dart';
 
 class AddOrderScreen extends ConsumerStatefulWidget {
   const AddOrderScreen({super.key});
@@ -25,34 +22,24 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _customerNameController = TextEditingController();
   final _customerPhoneController = TextEditingController();
-  final _shippingController = TextEditingController(text: '0');
-  final _discountController = TextEditingController(text: '0');
+  final _customerAddressController = TextEditingController();
+  final _shippingController = TextEditingController();
+  final _discountController = TextEditingController();
   final _notesController = TextEditingController();
 
-  final List<_OrderItemDraft> _items = [];
-  bool _showAdvanced = false;
-  bool _isLoadingProducts = false;
-  List<Map<String, dynamic>> _customerSuggestions = [];
+  List<Map<String, dynamic>> _customerSuggestions = const [];
   bool _isSearchingCustomer = false;
-  // ignore: unused_field
-  String? _selectedCustomerId;
 
-  @override
-  void dispose() {
-    _customerNameController.dispose();
-    _customerPhoneController.dispose();
-    _shippingController.dispose();
-    _discountController.dispose();
-    _notesController.dispose();
-    super.dispose();
+  final List<OrderItemDraft> _items = [];
+
+  // ── Money helpers ──────────────────────────────────────
+  int _parseTnd(String s) {
+    final cleaned = s.replaceAll(',', '.').trim();
+    if (cleaned.isEmpty) return 0;
+    final v = double.tryParse(cleaned) ?? 0;
+    return (v * 1000).round();
   }
 
-  int _parseTnd(String value) {
-    final tnd = double.tryParse(value.replaceAll(',', '.')) ?? 0;
-    return MillimesFormatter.toMillimes(tnd);
-  }
-
-  // ── Calculated totals ──────────────────────────────────
   int get _grossRevenue =>
       _items.fold(0, (sum, i) => sum + i.unitPrice * i.quantity);
   int get _totalCost =>
@@ -62,44 +49,81 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   int get _netRevenue => _grossRevenue - _discountAmount;
   int get _profit => _netRevenue - _totalCost - _shippingCost;
 
-  Future<void> _addProduct() async {
-    // Load products fresh — don't rely on cached provider
-    setState(() => _isLoadingProducts = true);
-    try {
-      final result = await ref
-          .read(productRepositoryProvider)
-          .getProducts(limit: 50);
-      final products = result.data;
+  bool get _canSave =>
+      _items.isNotEmpty &&
+      _customerNameController.text.trim().isNotEmpty &&
+      _customerPhoneController.text.trim().isNotEmpty;
 
-      if (!mounted) return;
-      setState(() => _isLoadingProducts = false);
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild profit summary live as the user types into fields.
+    _customerNameController.addListener(_rebuild);
+    _customerPhoneController.addListener(_rebuild);
+    _shippingController.addListener(_rebuild);
+    _discountController.addListener(_rebuild);
+  }
 
-      if (products.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No products found. Add products first.'),
-          ),
-        );
-        return;
-      }
+  void _rebuild() => setState(() {});
 
-      await showModalBottomSheet(
-        context: context,
-        backgroundColor: context.appSurface,
-        isScrollControlled: true,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-        ),
-        builder: (_) => _ProductPickerSheet(
-          products: products,
-          onSelected: (item) {
-            setState(() => _items.add(item));
-          },
-        ),
-      );
-    } catch (e) {
-      if (mounted) setState(() => _isLoadingProducts = false);
+  @override
+  void dispose() {
+    _customerNameController.dispose();
+    _customerPhoneController.dispose();
+    _customerAddressController.dispose();
+    _shippingController.dispose();
+    _discountController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchCustomers(String query) async {
+    if (query.trim().length < 2) {
+      setState(() => _customerSuggestions = const []);
+      return;
     }
+    setState(() => _isSearchingCustomer = true);
+    try {
+      final results = await ref
+          .read(customerRepositoryProvider)
+          .searchCustomers(query.trim());
+      if (!mounted) return;
+      setState(() => _customerSuggestions = results);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _customerSuggestions = const []);
+    } finally {
+      if (mounted) setState(() => _isSearchingCustomer = false);
+    }
+  }
+
+  void _selectSuggestion(Map<String, dynamic> customer) {
+    setState(() {
+      _customerNameController.text = customer['name'] as String? ?? '';
+      _customerPhoneController.text = customer['phone'] as String? ?? '';
+      _customerAddressController.text =
+          customer['address'] as String? ?? '';
+      _customerSuggestions = const [];
+    });
+  }
+
+  Future<void> _openProductPicker() async {
+    final result = await showProductPickerSheet(context);
+    if (result != null && mounted) {
+      setState(() => _items.add(result));
+    }
+  }
+
+  void _adjustQty(int index, int delta) {
+    setState(() {
+      final item = _items[index];
+      final newQty = item.quantity + delta;
+      if (newQty <= 0) {
+        _items.removeAt(index);
+      } else {
+        _items[index] = item.copyWith(quantity: newQty);
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -107,13 +131,12 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
     if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Add at least one product'),
-          backgroundColor: AppColors.error,
+          content: const Text('Ajoute au moins un produit'),
+          backgroundColor: context.colors.red,
         ),
       );
       return;
     }
-
     await ref.read(addOrderProvider.notifier).createOrder(
           customerName: _customerNameController.text.trim(),
           customerPhone: _customerPhoneController.text.trim(),
@@ -137,6 +160,7 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final addState = ref.watch(addOrderProvider);
     final isLoading = addState.status == AddOrderStatus.loading;
 
@@ -148,721 +172,79 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
     });
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
-            // ── Header ───────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal,
-                AppSpacing.xl,
-                AppSpacing.screenHorizontal,
-                AppSpacing.md,
-              ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => context.pop(),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: context.appSurfaceL2,
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.full),
-                      ),
-                      child: Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 16,
-                        color: context.appTextPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Text(
-                    'Log Sale',
-                    style: AppTypography.h2.copyWith(
-                      color: context.appTextPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Form ─────────────────────────────────────
+            _Header(onBack: () => context.pop()),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal,
+                padding: EdgeInsets.fromLTRB(
+                  context.spacing.space4,
+                  context.spacing.space3,
+                  context.spacing.space4,
+                  context.spacing.space4,
                 ),
                 child: Form(
                   key: _formKey,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Customer ──────────────────────
-                      _SectionTitle(title: 'Customer'),
-                      const SizedBox(height: AppSpacing.sm),
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          color: context.appSurface,
-                          borderRadius: BorderRadius.circular(AppRadius.lg),
-                          border: context.isDark
-                              ? Border.all(color: context.appBorder)
-                              : null,
-                          boxShadow: context.appCardShadow,
-                        ),
-                        child: Column(
-                          children: [
-                            // Name with autocomplete
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextFormField(
-                                  controller: _customerNameController,
-                                  textInputAction: TextInputAction.next,
-                                  textCapitalization: TextCapitalization.words,
-                                  style: AppTypography.body.copyWith(
-                                    color: context.appTextPrimary,
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: 'Customer name',
-                                    prefixIcon: const Icon(Icons.person_outline_rounded),
-                                    suffixIcon: _isSearchingCustomer
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: Padding(
-                                              padding: EdgeInsets.all(12),
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            ),
-                                          )
-                                        : null,
-                                  ),
-                                  onChanged: (value) async {
-                                    _selectedCustomerId = null;
-                                    if (value.length < 2) {
-                                      setState(() => _customerSuggestions = []);
-                                      return;
-                                    }
-                                    setState(() => _isSearchingCustomer = true);
-                                    try {
-                                      final dio = (await DioClient.getInstance()).dio;
-                                      final response = await dio.post(
-                                        '/customers/search',
-                                        data: {'query': value},
-                                      );
-                                      final results = response.data as List;
-                                      setState(() {
-                                        _customerSuggestions = results
-                                            .map((e) => e as Map<String, dynamic>)
-                                            .toList();
-                                      });
-                                    } catch (_) {
-                                      setState(() => _customerSuggestions = []);
-                                    } finally {
-                                      setState(() => _isSearchingCustomer = false);
-                                    }
-                                  },
-                                  validator: (v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return 'Name is required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                // Suggestions dropdown
-                                if (_customerSuggestions.isNotEmpty)
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 4),
-                                    decoration: BoxDecoration(
-                                      color: context.appSurface,
-                                      borderRadius: BorderRadius.circular(AppRadius.md),
-                                      border: Border.all(color: context.appBorder),
-                                      boxShadow: context.appCardShadow,
-                                    ),
-                                    child: Column(
-                                      children: _customerSuggestions.map((customer) {
-                                        return GestureDetector(
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedCustomerId = customer['id'] as String;
-                                              _customerNameController.text =
-                                                  customer['name'] as String;
-                                              _customerPhoneController.text =
-                                                  customer['phone'] as String? ?? '';
-                                              _customerSuggestions = [];
-                                            });
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: AppSpacing.md,
-                                              vertical: AppSpacing.sm,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 36,
-                                                  height: 36,
-                                                  decoration: BoxDecoration(
-                                                    color: context.appBrandLight,
-                                                    borderRadius:
-                                                        BorderRadius.circular(AppRadius.full),
-                                                  ),
-                                                  child: Center(
-                                                    child: Text(
-                                                      (customer['name'] as String)[0]
-                                                          .toUpperCase(),
-                                                      style: AppTypography.body.copyWith(
-                                                        color: context.appBrand,
-                                                        fontWeight: FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: AppSpacing.sm),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        customer['name'] as String,
-                                                        style: AppTypography.body.copyWith(
-                                                          color: context.appTextPrimary,
-                                                          fontWeight: FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        customer['phone'] as String? ?? '',
-                                                        style: AppTypography.caption.copyWith(
-                                                          color: context.appTextSecondary,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Icon(
-                                                  Icons.north_west_rounded,
-                                                  size: 14,
-                                                  color: context.appTextTertiary,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            // Phone
-                            TextFormField(
-                              controller: _customerPhoneController,
-                              keyboardType: TextInputType.phone,
-                              textInputAction: TextInputAction.next,
-                              style: AppTypography.body.copyWith(
-                                color: context.appTextPrimary,
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: '+216 XX XXX XXX',
-                                prefixIcon: Icon(Icons.phone_outlined),
-                              ),
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) {
-                                  return 'Phone is required';
-                                }
-                                return null;
-                              },
-                            ),
-                          ],
-                        ),
+                      _CustomerSection(
+                        nameController: _customerNameController,
+                        phoneController: _customerPhoneController,
+                        addressController: _customerAddressController,
+                        suggestions: _customerSuggestions,
+                        isSearching: _isSearchingCustomer,
+                        onNameChanged: _searchCustomers,
+                        onSelectSuggestion: _selectSuggestion,
                       ),
-
-                      const SizedBox(height: AppSpacing.xl),
-
-                      // ── Products ──────────────────────
-                      Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                        children: [
-                          _SectionTitle(title: 'Products'),
-                          GestureDetector(
-                            onTap: _addProduct,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: context.appBrand,
-                                borderRadius: BorderRadius.circular(
-                                    AppRadius.full),
-                              ),
-                              child: _isLoadingProducts
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.white,
-                                      ),
-                                    )
-                                  : Row(
-                                      children: [
-                                        const Icon(Icons.add_rounded,
-                                            color: AppColors.white, size: 16),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Add Product',
-                                          style: AppTypography.label.copyWith(
-                                            color: AppColors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                        ],
+                      SizedBox(height: context.spacing.space6),
+                      _ProductsSection(
+                        items: _items,
+                        onAdd: _openProductPicker,
+                        onAdjustQty: _adjustQty,
                       ),
-                      const SizedBox(height: AppSpacing.sm),
-
-                      // Items list
-                      if (_items.isEmpty)
-                        GestureDetector(
-                          onTap: _addProduct,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(AppSpacing.xl),
-                            decoration: BoxDecoration(
-                              color: context.appSurface,
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.lg),
-                              border: Border.all(
-                                color: context.appBorder,
-                                style: BorderStyle.solid,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.add_shopping_cart_rounded,
-                                  color: context.appTextTertiary,
-                                  size: 32,
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  'Tap to add products',
-                                  style: AppTypography.body.copyWith(
-                                    color: context.appTextTertiary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        Container(
-                          decoration: BoxDecoration(
-                            color: context.appSurface,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.lg),
-                            border: context.isDark
-                                ? Border.all(color: context.appBorder)
-                                : null,
-                            boxShadow: context.appCardShadow,
-                          ),
-                          child: Column(
-                            children: _items.asMap().entries.map((entry) {
-                              final i = entry.key;
-                              final item = entry.value;
-                              final isLast = i == _items.length - 1;
-
-                              return Column(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(
-                                        AppSpacing.md),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                item.productName,
-                                                style: AppTypography.body
-                                                    .copyWith(
-                                                  color:
-                                                      context.appTextPrimary,
-                                                  fontWeight:
-                                                      FontWeight.w600,
-                                                ),
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                              ),
-                                              Text(
-                                                '${MillimesFormatter.format(item.unitPrice)} × ${item.quantity}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color:
-                                                      context.appTextSecondary,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        // Quantity controls
-                                        Row(
-                                          children: [
-                                            GestureDetector(
-                                              onTap: () {
-                                                setState(() {
-                                                  if (item.quantity > 1) {
-                                                    _items[i] = item
-                                                        .copyWith(
-                                                            quantity: item
-                                                                    .quantity -
-                                                                1);
-                                                  } else {
-                                                    _items.removeAt(i);
-                                                  }
-                                                });
-                                              },
-                                              child: Container(
-                                                width: 28,
-                                                height: 28,
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      context.appSurfaceL2,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          AppRadius.full),
-                                                ),
-                                                child: Icon(
-                                                  item.quantity == 1
-                                                      ? Icons
-                                                          .delete_outline_rounded
-                                                      : Icons.remove_rounded,
-                                                  size: 16,
-                                                  color: item.quantity == 1
-                                                      ? AppColors.error
-                                                      : context.appTextPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal:
-                                                          AppSpacing.sm),
-                                              child: Text(
-                                                '${item.quantity}',
-                                                style: AppTypography.h4
-                                                    .copyWith(
-                                                  color:
-                                                      context.appTextPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                            GestureDetector(
-                                              onTap: () {
-                                                setState(() {
-                                                  _items[i] = item.copyWith(
-                                                      quantity:
-                                                          item.quantity + 1);
-                                                });
-                                              },
-                                              child: Container(
-                                                width: 28,
-                                                height: 28,
-                                                decoration: BoxDecoration(
-                                                  color: context.appBrand,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          AppRadius.full),
-                                                ),
-                                                child: const Icon(
-                                                  Icons.add_rounded,
-                                                  size: 16,
-                                                  color: AppColors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (!isLast)
-                                    Divider(
-                                      height: 1,
-                                      color: context.appBorder,
-                                    ),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-
-                      const SizedBox(height: AppSpacing.xl),
-
-                      // ── Shipping ──────────────────────
-                      _SectionTitle(title: 'Shipping Cost'),
-                      const SizedBox(height: AppSpacing.sm),
-                      TextFormField(
-                        controller: _shippingController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                        style: AppTypography.body.copyWith(
-                          color: context.appTextPrimary,
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                              RegExp(r'[\d,.]')),
-                        ],
-                        decoration: const InputDecoration(
-                          hintText: '0',
-                          suffixText: 'TND',
-                          prefixIcon:
-                              Icon(Icons.local_shipping_outlined),
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-
-                      const SizedBox(height: AppSpacing.md),
-
-                      // ── Advanced ──────────────────────
-                      GestureDetector(
-                        onTap: () => setState(
-                            () => _showAdvanced = !_showAdvanced),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _showAdvanced
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              color: context.appBrand,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _showAdvanced
-                                  ? 'Hide advanced'
-                                  : 'Discount',
-                              style: AppTypography.body.copyWith(
-                                color: context.appBrand,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      if (_showAdvanced) ...[
-                        const SizedBox(height: AppSpacing.md),
-                        // Discount full width
-                        Text(
-                          'Discount',
-                          style: AppTypography.body.copyWith(
-                            color: context.appTextPrimary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.xs),
-                        TextFormField(
-                          controller: _discountController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: AppTypography.body.copyWith(
-                            color: context.appTextPrimary,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[\d,.]')),
-                          ],
-                          decoration: const InputDecoration(
-                            hintText: '0',
-                            suffixText: 'TND',
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        TextFormField(
-                          controller: _notesController,
-                          maxLines: 2,
-                          style: AppTypography.body.copyWith(
-                            color: context.appTextPrimary,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: 'Notes (optional)...',
-                            prefixIcon: Icon(Icons.notes_rounded),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: AppSpacing.xl),
-
-                      // ── Profit Summary ────────────────
+                      SizedBox(height: context.spacing.space6),
+                      _ShippingSection(controller: _shippingController),
+                      SizedBox(height: context.spacing.space6),
+                      _DiscountSection(controller: _discountController),
+                      SizedBox(height: context.spacing.space6),
+                      _NotesSection(controller: _notesController),
+                      SizedBox(height: context.spacing.space6),
                       if (_items.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                _profit >= 0
-                                    ? AppColors.success
-                                    : AppColors.error,
-                                _profit >= 0
-                                    ? const Color(0xFF16A34A)
-                                    : AppColors.errorBg,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.lg),
+                        if (_items.where((i) => i.isBackorder).isNotEmpty) ...[
+                          DidoAttentionStrip(
+                            title:
+                                '${_items.where((i) => i.isBackorder).length} '
+                                "${_items.where((i) => i.isBackorder).length == 1 ? 'article' : 'articles'} "
+                                'en backorder',
+                            subtitle: 'À commander à la prochaine livraison',
                           ),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Revenue',
-                                    style: AppTypography.body.copyWith(
-                                      color: AppColors.white
-                                          .withValues(alpha: 0.8),
-                                    ),
-                                  ),
-                                  Text(
-                                    MillimesFormatter.format(_netRevenue),
-                                    style: AppTypography.body.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: AppSpacing.xs),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Cost',
-                                    style: AppTypography.body.copyWith(
-                                      color: AppColors.white
-                                          .withValues(alpha: 0.8),
-                                    ),
-                                  ),
-                                  Text(
-                                    '- ${MillimesFormatter.format(_totalCost + _shippingCost)}',
-                                    style: AppTypography.body.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Container(
-                                margin: const EdgeInsets.symmetric(
-                                    vertical: AppSpacing.sm),
-                                height: 1,
-                                color:
-                                    AppColors.white.withValues(alpha: 0.3),
-                              ),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Real Profit',
-                                    style: AppTypography.h4.copyWith(
-                                      color: AppColors.white,
-                                    ),
-                                  ),
-                                  Text(
-                                    MillimesFormatter.format(_profit),
-                                    style: AppTypography.h3.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                          SizedBox(height: context.spacing.space4),
+                        ],
+                        _ProfitSummary(
+                          revenue: _netRevenue,
+                          cost: _totalCost + _shippingCost,
+                          profit: _profit,
                         ),
-                        const SizedBox(height: AppSpacing.xl),
+                        SizedBox(height: context.spacing.space4),
                       ],
-
-                      // ── Error ─────────────────────────
                       if (addState.error != null) ...[
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          decoration: BoxDecoration(
-                            color: AppColors.errorBg,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.sm),
-                          ),
-                          child: Text(
-                            addState.error!,
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
+                        _ErrorBanner(message: addState.error!),
+                        SizedBox(height: context.spacing.space4),
                       ],
-
-                      // ── Save button ───────────────────
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: isLoading ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: context.appBrand,
-                            foregroundColor: AppColors.white,
-                            disabledBackgroundColor:
-                                context.appBrand.withValues(alpha: 0.3),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.lg),
-                            ),
-                          ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.white,
-                                  ),
-                                )
-                              : Text(
-                                  'Save Order',
-                                  style: AppTypography.bodyLarge.copyWith(
-                                    color: AppColors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                        ),
-                      ),
-
-                      const SizedBox(height: AppSpacing.xl),
                     ],
                   ),
                 ),
               ),
             ),
+            _StickyFooter(
+              loading: isLoading,
+              enabled: _canSave,
+              onSave: _submit,
+            ),
           ],
         ),
       ),
@@ -870,347 +252,226 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   }
 }
 
-// ── Product Picker Sheet ───────────────────────────────────
-class _ProductPickerSheet extends ConsumerStatefulWidget {
-  const _ProductPickerSheet({
-    required this.products,
-    required this.onSelected,
-  });
-
-  final List<ProductLean> products;
-  final Function(_OrderItemDraft) onSelected;
-
-  @override
-  ConsumerState<_ProductPickerSheet> createState() =>
-      _ProductPickerSheetState();
-}
-
-class _ProductPickerSheetState
-    extends ConsumerState<_ProductPickerSheet> {
-  ProductLean? _selectedProduct;
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (_, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: context.appSurface,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(AppRadius.xl),
-              topRight: Radius.circular(AppRadius.xl),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Handle
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.appBorder,
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Text(
-                  _selectedProduct == null
-                      ? 'Select Product'
-                      : 'Select Variant',
-                  style: AppTypography.h4.copyWith(
-                    color: context.appTextPrimary,
-                  ),
-                ),
-              ),
-
-              Divider(height: 1, color: context.appBorder),
-
-              // Product list
-              if (_selectedProduct == null)
-                Expanded(
-                  child: ListView.separated(
-                    controller: scrollController,
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    itemCount: widget.products.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSpacing.xs),
-                    itemBuilder: (context, index) {
-                      final product = widget.products[index];
-                      return GestureDetector(
-                        onTap: () async {
-                          if (product.isMultiVariant) {
-                            // Load full product to get variants
-                            setState(
-                                () => _selectedProduct = product);
-                          } else {
-                            // Load full product for variant info
-                            final full = await ref
-                                .read(productRepositoryProvider)
-                                .getProduct(product.id);
-                            if (full.variants.isNotEmpty &&
-                                context.mounted) {
-                              final variant = full.variants.first;
-                              widget.onSelected(_OrderItemDraft(
-                                productId: product.id,
-                                variantId: variant.id,
-                                productName: product.name,
-                                unitPrice: variant.effectiveSellPrice,
-                                unitCost: variant.effectiveCostPrice,
-                                quantity: 1,
-                              ));
-                              Navigator.pop(context);
-                            }
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          decoration: BoxDecoration(
-                            color: context.appSurfaceL2,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
-                          ),
-                          child: Row(
-                            children: [
-                              // Image
-                              ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.sm),
-                                child: SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: product.primaryImageUrl != null
-                                      ? Image.network(
-                                          product.primaryImageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (_, __, ___) => Container(
-                                            color: context.appSurfaceL2,
-                                            child: Icon(
-                                              Icons.inventory_2_outlined,
-                                              color:
-                                                  context.appTextTertiary,
-                                              size: 24,
-                                            ),
-                                          ),
-                                        )
-                                      : Container(
-                                          color: context.appSurfaceL2,
-                                          child: Icon(
-                                            Icons.inventory_2_outlined,
-                                            color: context.appTextTertiary,
-                                            size: 24,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      product.name,
-                                      style: AppTypography.body.copyWith(
-                                        color: context.appTextPrimary,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      MillimesFormatter.format(
-                                          product.baseSellPrice),
-                                      style:
-                                          AppTypography.caption.copyWith(
-                                        color: context.appBrand,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (product.isMultiVariant)
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: context.appTextTertiary,
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )
-              else
-                // Variant picker
-                _VariantPicker(
-                  product: _selectedProduct!,
-                  onSelected: (variant) {
-                    widget.onSelected(_OrderItemDraft(
-                      productId: _selectedProduct!.id,
-                      variantId: variant.id,
-                      productName: _selectedProduct!.name,
-                      unitPrice: variant.effectiveSellPrice,
-                      unitCost: variant.effectiveCostPrice,
-                      quantity: 1,
-                    ));
-                    Navigator.pop(context);
-                  },
-                  onBack: () =>
-                      setState(() => _selectedProduct = null),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ── Variant Picker ─────────────────────────────────────────
-class _VariantPicker extends ConsumerWidget {
-  const _VariantPicker({
-    required this.product,
-    required this.onSelected,
-    required this.onBack,
-  });
-
-  final ProductLean product;
-  final Function(ProductVariant) onSelected;
+// ════════════════════════════════════════════════════════════
+// Header
+// ════════════════════════════════════════════════════════════
+class _Header extends StatelessWidget {
+  const _Header({required this.onBack});
   final VoidCallback onBack;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final productAsync =
-        ref.watch(productDetailProvider(product.id));
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space4,
+        context.spacing.space3,
+        context.spacing.space4,
+        context.spacing.space3,
+      ),
+      child: Row(
+        children: [
+          _BackButton(onTap: onBack),
+          SizedBox(width: context.spacing.space3),
+          Expanded(
+            child: Text(
+              'Nouvelle commande',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.typography.h2.copyWith(color: c.fg1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-    return Expanded(
-      child: productAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => Center(
-          child: Text(
-            'Could not load variants',
-            style: AppTypography.body
-                .copyWith(color: context.appTextSecondary),
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      pressedScale: 0.92,
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: c.fg1),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Customer section
+// ════════════════════════════════════════════════════════════
+class _CustomerSection extends StatelessWidget {
+  const _CustomerSection({
+    required this.nameController,
+    required this.phoneController,
+    required this.addressController,
+    required this.suggestions,
+    required this.isSearching,
+    required this.onNameChanged,
+    required this.onSelectSuggestion,
+  });
+
+  final TextEditingController nameController;
+  final TextEditingController phoneController;
+  final TextEditingController addressController;
+  final List<Map<String, dynamic>> suggestions;
+  final bool isSearching;
+  final ValueChanged<String> onNameChanged;
+  final ValueChanged<Map<String, dynamic>> onSelectSuggestion;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionTitle('Client'),
+        SizedBox(height: context.spacing.space3),
+        Container(
+          decoration: BoxDecoration(
+            color: c.surface1,
+            border: Border.all(color: c.border1),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _BorderedField(
+                controller: nameController,
+                hint: 'Nom du client',
+                prefixIcon: Icons.person_outline_rounded,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                trailing: isSearching
+                    ? Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: c.fg2,
+                          ),
+                        ),
+                      )
+                    : null,
+                onChanged: onNameChanged,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Nom requis' : null,
+              ),
+              Container(height: 1, color: c.border1),
+              _BorderedField(
+                controller: phoneController,
+                hint: 'Téléphone',
+                prefixIcon: Icons.phone_outlined,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Téléphone requis' : null,
+              ),
+              Container(height: 1, color: c.border1),
+              _BorderedField(
+                controller: addressController,
+                hint: 'Adresse (facultatif)',
+                prefixIcon: Icons.location_on_outlined,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.done,
+              ),
+            ],
           ),
         ),
-        data: (full) => Column(
+        if (suggestions.isNotEmpty) ...[
+          SizedBox(height: context.spacing.space2),
+          Container(
+            decoration: BoxDecoration(
+              color: c.surface1,
+              border: Border.all(color: c.border1),
+              borderRadius: BorderRadius.circular(context.radius.radiusCard),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < suggestions.length; i++) ...[
+                  _SuggestionRow(
+                    customer: suggestions[i],
+                    onTap: () => onSelectSuggestion(suggestions[i]),
+                  ),
+                  if (i < suggestions.length - 1)
+                    Container(height: 1, color: c.border1),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SuggestionRow extends StatelessWidget {
+  const _SuggestionRow({required this.customer, required this.onTap});
+  final Map<String, dynamic> customer;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final name = (customer['name'] as String?) ?? '';
+    final phone = (customer['phone'] as String?) ?? '';
+    return _ScaleTap(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
+        ),
+        child: Row(
           children: [
-            // Back button
-            GestureDetector(
-              onTap: onBack,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.arrow_back_ios_new_rounded,
-                        size: 14, color: context.appBrand),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Back to products',
-                      style: AppTypography.body.copyWith(
-                        color: context.appBrand,
-                      ),
-                    ),
-                  ],
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: c.surface2,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: context.typography.bodyMd.copyWith(
+                  color: c.fg1,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
+            SizedBox(width: context.spacing.space3),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                itemCount: full.variants
-                    .where((v) => v.isActive)
-                    .length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: AppSpacing.xs),
-                itemBuilder: (context, index) {
-                  final variant = full.variants
-                      .where((v) => v.isActive)
-                      .toList()[index];
-
-                  return GestureDetector(
-                    onTap: () => onSelected(variant),
-                    child: Container(
-                      padding: const EdgeInsets.all(AppSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: context.appSurfaceL2,
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.md),
-                      ),
-                      child: Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                variant.isSimple
-                                    ? 'Default'
-                                    : variant.attributeLabel,
-                                style: AppTypography.body.copyWith(
-                                  color: context.appTextPrimary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                variant.sku,
-                                style: AppTypography.caption.copyWith(
-                                  color: context.appTextTertiary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              Text(
-                                MillimesFormatter.format(
-                                    variant.effectiveSellPrice),
-                                style: AppTypography.body.copyWith(
-                                  color: context.appBrand,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: variant.stockQuantity > 0
-                                      ? AppColors.successBg
-                                      : AppColors.errorBg,
-                                  borderRadius: BorderRadius.circular(
-                                      AppRadius.full),
-                                ),
-                                child: Text(
-                                  '${variant.stockQuantity} left',
-                                  style: AppTypography.caption.copyWith(
-                                    color: variant.stockQuantity > 0
-                                        ? AppColors.success
-                                        : AppColors.error,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.bodyMd.copyWith(color: c.fg1),
+                  ),
+                  if (phone.isNotEmpty)
+                    Text(
+                      phone,
+                      style:
+                          context.typography.bodySmall.copyWith(color: c.fg3),
                     ),
-                  );
-                },
+                ],
               ),
             ),
           ],
@@ -1220,45 +481,674 @@ class _VariantPicker extends ConsumerWidget {
   }
 }
 
-// ── Draft model ────────────────────────────────────────────
-class _OrderItemDraft {
-  const _OrderItemDraft({
-    required this.productId,
-    required this.variantId,
-    required this.productName,
-    required this.unitPrice,
-    required this.unitCost,
-    required this.quantity,
+// ════════════════════════════════════════════════════════════
+// Products section
+// ════════════════════════════════════════════════════════════
+class _ProductsSection extends StatelessWidget {
+  const _ProductsSection({
+    required this.items,
+    required this.onAdd,
+    required this.onAdjustQty,
   });
 
-  final String productId;
-  final String variantId;
-  final String productName;
-  final int unitPrice;
-  final int unitCost;
-  final int quantity;
+  final List<OrderItemDraft> items;
+  final VoidCallback onAdd;
+  final void Function(int index, int delta) onAdjustQty;
 
-  _OrderItemDraft copyWith({int? quantity}) => _OrderItemDraft(
-        productId: productId,
-        variantId: variantId,
-        productName: productName,
-        unitPrice: unitPrice,
-        unitCost: unitCost,
-        quantity: quantity ?? this.quantity,
-      );
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const _SectionTitle('Produits'),
+            _PillCta(
+              label: 'Ajouter un produit',
+              icon: Icons.add_rounded,
+              onTap: onAdd,
+            ),
+          ],
+        ),
+        SizedBox(height: context.spacing.space3),
+        if (items.isEmpty)
+          _EmptyProductsState(onTap: onAdd)
+        else
+          _ProductsList(items: items, onAdjustQty: onAdjustQty),
+      ],
+    );
+  }
 }
 
-// ── Reusable ───────────────────────────────────────────────
+class _EmptyProductsState extends StatelessWidget {
+  const _EmptyProductsState({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space6,
+        ),
+        decoration: BoxDecoration(
+          color: c.surface1,
+          border: Border.all(color: c.border1),
+          borderRadius: BorderRadius.circular(context.radius.radiusCard),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_shopping_cart_outlined, size: 32, color: c.fg3),
+            SizedBox(height: context.spacing.space2),
+            Text(
+              'Toucher pour ajouter des produits',
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductsList extends StatelessWidget {
+  const _ProductsList({required this.items, required this.onAdjustQty});
+  final List<OrderItemDraft> items;
+  final void Function(int index, int delta) onAdjustQty;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface1,
+        border: Border.all(color: c.border1),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            _ProductRow(
+              item: items[i],
+              onDecrement: () => onAdjustQty(i, -1),
+              onIncrement: () => onAdjustQty(i, 1),
+            ),
+            if (i < items.length - 1)
+              Container(height: 1, color: c.border1),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductRow extends StatelessWidget {
+  const _ProductRow({
+    required this.item,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  final OrderItemDraft item;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.spacing.space4,
+        vertical: context.spacing.space3,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.productName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.typography.h4.copyWith(color: c.fg1),
+                ),
+                SizedBox(height: context.spacing.space1),
+                Text(
+                  '${MillimesFormatter.format(item.unitPrice)} × ${item.quantity}',
+                  style: context.typography.bodySmall.copyWith(color: c.fg3),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: context.spacing.space3),
+          _StepperButton(
+            icon: item.quantity == 1
+                ? Icons.delete_outline_rounded
+                : Icons.remove_rounded,
+            onTap: onDecrement,
+          ),
+          SizedBox(width: context.spacing.space2),
+          SizedBox(
+            width: 24,
+            child: Text(
+              '${item.quantity}',
+              textAlign: TextAlign.center,
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+          ),
+          SizedBox(width: context.spacing.space2),
+          _StepperButton(icon: Icons.add_rounded, onTap: onIncrement),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  const _StepperButton({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      pressedScale: 0.92,
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: c.fg1,
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 16, color: c.surface0),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Shipping / Discount / Notes — single-field card sections
+// ════════════════════════════════════════════════════════════
+class _ShippingSection extends StatelessWidget {
+  const _ShippingSection({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SingleFieldSection(
+      title: 'Livraison',
+      controller: controller,
+      hint: '0',
+      prefixIcon: Icons.local_shipping_outlined,
+      suffix: 'TND',
+      isMoney: true,
+    );
+  }
+}
+
+class _DiscountSection extends StatelessWidget {
+  const _DiscountSection({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SingleFieldSection(
+      title: 'Remise',
+      controller: controller,
+      hint: '0',
+      prefixIcon: Icons.local_offer_outlined,
+      suffix: 'TND',
+      isMoney: true,
+    );
+  }
+}
+
+class _NotesSection extends StatelessWidget {
+  const _NotesSection({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SingleFieldSection(
+      title: 'Notes (facultatif)',
+      controller: controller,
+      hint: 'Note interne…',
+      maxLines: 2,
+    );
+  }
+}
+
+class _SingleFieldSection extends StatelessWidget {
+  const _SingleFieldSection({
+    required this.title,
+    required this.controller,
+    required this.hint,
+    this.prefixIcon,
+    this.suffix,
+    this.isMoney = false,
+    this.maxLines = 1,
+  });
+
+  final String title;
+  final TextEditingController controller;
+  final String hint;
+  final IconData? prefixIcon;
+  final String? suffix;
+  final bool isMoney;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(title),
+        SizedBox(height: context.spacing.space3),
+        Container(
+          decoration: BoxDecoration(
+            color: c.surface1,
+            border: Border.all(color: c.border1),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _BorderedField(
+            controller: controller,
+            hint: hint,
+            prefixIcon: prefixIcon,
+            suffix: suffix,
+            maxLines: maxLines,
+            keyboardType: isMoney
+                ? const TextInputType.numberWithOptions(decimal: true)
+                : null,
+            inputFormatters: isMoney
+                ? [FilteringTextInputFormatter.allow(RegExp(r'[\d,.]'))]
+                : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Profit summary (no gradient — flat tinted bg)
+// ════════════════════════════════════════════════════════════
+class _ProfitSummary extends StatelessWidget {
+  const _ProfitSummary({
+    required this.revenue,
+    required this.cost,
+    required this.profit,
+  });
+
+  final int revenue;
+  final int cost;
+  final int profit;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final profitable = profit >= 0;
+    final bg = profitable ? c.greenTint12 : c.coralTint12;
+    final fg = profitable ? c.greenFg : c.coralFg;
+    return Container(
+      padding: EdgeInsets.all(context.spacing.space4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
+      ),
+      child: Column(
+        children: [
+          _SummaryRow(label: 'Chiffre', value: MillimesFormatter.format(revenue), fg: fg),
+          SizedBox(height: context.spacing.space2),
+          _SummaryRow(label: 'Coût', value: '- ${MillimesFormatter.format(cost)}', fg: fg),
+          SizedBox(height: context.spacing.space3),
+          Container(height: 1, color: c.border1),
+          SizedBox(height: context.spacing.space3),
+          _SummaryRow(
+            label: 'Bénéfice réel',
+            value: MillimesFormatter.format(profit),
+            fg: fg,
+            isPrimary: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    required this.fg,
+    this.isPrimary = false,
+  });
+
+  final String label;
+  final String value;
+  final Color fg;
+  final bool isPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = isPrimary
+        ? context.typography.bodyMd.copyWith(color: fg, fontWeight: FontWeight.w600)
+        : context.typography.body.copyWith(color: fg);
+    final valueStyle = isPrimary
+        ? context.typography.h3.copyWith(color: fg)
+        : context.typography.bodyMd.copyWith(color: fg, fontWeight: FontWeight.w600);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: labelStyle),
+        Text(value, style: valueStyle),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Error banner
+// ════════════════════════════════════════════════════════════
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.spacing.space3),
+      decoration: BoxDecoration(
+        color: c.redTint12,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: Text(
+        message,
+        style: context.typography.bodySmall.copyWith(color: c.redFg),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Sticky footer with primary save button
+// ════════════════════════════════════════════════════════════
+class _StickyFooter extends StatelessWidget {
+  const _StickyFooter({
+    required this.loading,
+    required this.enabled,
+    required this.onSave,
+  });
+
+  final bool loading;
+  final bool enabled;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface0,
+        border: Border(top: BorderSide(color: c.border1, width: 1)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space4,
+        context.spacing.space3,
+        context.spacing.space4,
+        context.spacing.space3 + bottomInset,
+      ),
+      child: _PrimaryCta(
+        label: 'Enregistrer',
+        loading: loading,
+        enabled: enabled && !loading,
+        onTap: onSave,
+        fullWidth: true,
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Primary CTA (v1.1 §3.1) — replaces DidoButton.primary which is
+// still teal-backed. Token-driven fg-1 bg / surface0 fg.
+// ════════════════════════════════════════════════════════════
+class _PrimaryCta extends StatelessWidget {
+  const _PrimaryCta({
+    required this.label,
+    required this.onTap,
+    this.loading = false,
+    this.enabled = true,
+    this.fullWidth = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool loading;
+  final bool enabled;
+  final bool fullWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final interactive = enabled && !loading;
+    final body = Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: interactive ? c.fg1 : c.fg4,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      alignment: Alignment.center,
+      child: loading
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: c.surface0),
+            )
+          : Text(
+              label,
+              style: context.typography.button.copyWith(color: c.surface0),
+            ),
+    );
+    final wrapped = fullWidth ? SizedBox(width: double.infinity, child: body) : body;
+    return _ScaleTap(
+      onTap: interactive ? onTap : null,
+      child: wrapped,
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Pill CTA — small inline button (e.g. "+ Ajouter un produit"
+// in the Products section header). v1.1 §3.1 fg-1 bg, 8px radius.
+// ════════════════════════════════════════════════════════════
+class _PillCta extends StatelessWidget {
+  const _PillCta({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: c.fg1,
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: c.surface0),
+            SizedBox(width: context.spacing.space1),
+            Text(
+              label,
+              style: context.typography.bodySmallMd.copyWith(color: c.surface0),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Reusable bordered field (TextFormField inside a card)
+// ════════════════════════════════════════════════════════════
+class _BorderedField extends StatelessWidget {
+  const _BorderedField({
+    required this.controller,
+    required this.hint,
+    this.prefixIcon,
+    this.suffix,
+    this.trailing,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.textInputAction,
+    this.maxLines = 1,
+    this.inputFormatters,
+    this.onChanged,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final IconData? prefixIcon;
+  final String? suffix;
+  final Widget? trailing;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final TextInputAction? textInputAction;
+  final int maxLines;
+  final List<TextInputFormatter>? inputFormatters;
+  final ValueChanged<String>? onChanged;
+  final FormFieldValidator<String>? validator;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      textInputAction: textInputAction,
+      maxLines: maxLines,
+      inputFormatters: inputFormatters,
+      onChanged: onChanged,
+      validator: validator,
+      style: context.typography.input.copyWith(color: c.fg1),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: context.typography.input.copyWith(color: c.fg3),
+        prefixIcon: prefixIcon == null
+            ? null
+            : Icon(prefixIcon, size: 20, color: c.fg3),
+        suffixText: suffix,
+        suffixStyle: context.typography.bodyMd.copyWith(color: c.fg3),
+        suffixIcon: trailing,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
+        ),
+        isDense: true,
+        errorStyle:
+            context.typography.bodySmall.copyWith(color: c.redFg),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Section title
+// ════════════════════════════════════════════════════════════
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
+  const _SectionTitle(this.title);
   final String title;
 
   @override
   Widget build(BuildContext context) {
     return Text(
-      title,
-      style: AppTypography.h4.copyWith(
-        color: context.appTextPrimary,
+      title.toUpperCase(),
+      style: context.typography.label.copyWith(color: context.colors.fg3),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Tap feedback (duplicated — see TODO in product_picker_sheet)
+// ════════════════════════════════════════════════════════════
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.98,
+  });
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.onTap == null
+          ? null
+          : (_) {
+              _set(true);
+              HapticFeedback.lightImpact();
+            },
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _set(false);
+              widget.onTap!();
+            },
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        child: widget.child,
       ),
     );
   }

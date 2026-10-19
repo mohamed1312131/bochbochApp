@@ -6,6 +6,14 @@ final orderRepositoryProvider = Provider<OrderRepository>((ref) {
   return OrderRepository();
 });
 
+// ── Order Detail ───────────────────────────────────────────
+// Public so other features (exchange confirm, return flow, etc.) can
+// invalidate after a mutation that should refresh the visible order.
+final orderDetailProvider =
+    FutureProvider.autoDispose.family<Order, String>((ref, id) async {
+  return ref.read(orderRepositoryProvider).getOrder(id);
+});
+
 // ── Order List ─────────────────────────────────────────────
 final orderListProvider =
     AsyncNotifierProvider.autoDispose<OrderListNotifier, List<OrderLean>>(
@@ -67,6 +75,12 @@ class OrderListNotifier extends AutoDisposeAsyncNotifier<List<OrderLean>> {
 // ── Add Order State ────────────────────────────────────────
 enum AddOrderStatus { idle, loading, success, error }
 
+// Sentinel so copyWith can distinguish "not passed" from "explicitly
+// null". Without this, `createdOrder ?? this.createdOrder` made it
+// impossible to clear a stale order from a previous submit (H11) — the
+// next failed submit would still see the old `createdOrder` set.
+const Object _addOrderUnchanged = Object();
+
 class AddOrderState {
   const AddOrderState({
     this.status = AddOrderStatus.idle,
@@ -81,12 +95,14 @@ class AddOrderState {
   AddOrderState copyWith({
     AddOrderStatus? status,
     String? error,
-    Order? createdOrder,
+    Object? createdOrder = _addOrderUnchanged,
   }) =>
       AddOrderState(
         status: status ?? this.status,
         error: error,
-        createdOrder: createdOrder ?? this.createdOrder,
+        createdOrder: identical(createdOrder, _addOrderUnchanged)
+            ? this.createdOrder
+            : createdOrder as Order?,
       );
 }
 
@@ -103,7 +119,14 @@ class AddOrderNotifier extends AutoDisposeNotifier<AddOrderState> {
     int adSpend = 0,
     String? notes,
   }) async {
-    state = state.copyWith(status: AddOrderStatus.loading, error: null);
+    // Clear any stale createdOrder from a prior submit so failed
+    // submissions don't leak the previous successful order through the
+    // success listener.
+    state = state.copyWith(
+      status: AddOrderStatus.loading,
+      error: null,
+      createdOrder: null,
+    );
     try {
       final order = await ref.read(orderRepositoryProvider).createOrder(
             customerName: customerName,

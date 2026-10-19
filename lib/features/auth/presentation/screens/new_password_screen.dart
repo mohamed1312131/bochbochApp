@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/theme/app_theme_extension.dart';
+
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../shared/widgets/dido_button.dart';
 import '../../data/auth_repository.dart';
 
 class NewPasswordScreen extends ConsumerStatefulWidget {
@@ -60,200 +58,234 @@ class _NewPasswordScreenState extends ConsumerState<NewPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenHorizontal,
-          ),
+          padding:
+              EdgeInsets.symmetric(horizontal: context.spacing.screenEdge),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: AppSpacing.xxxl),
-
-                GestureDetector(
+                SizedBox(height: context.spacing.space8),
+                _BackButton(
                   onTap: () => context.go(
                     '/auth/verify-otp',
                     extra: widget.email,
                   ),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: context.appSurfaceL2,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                    ),
-                    child: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 16,
-                      color: context.appTextPrimary,
-                    ),
-                  ),
                 ),
-
-                const SizedBox(height: AppSpacing.xl),
-
+                SizedBox(height: context.spacing.space6),
                 Text(
-                  'New password',
-                  style: AppTypography.h1.copyWith(
-                    color: context.appTextPrimary,
-                  ),
+                  'Nouveau mot de passe',
+                  style: context.typography.h1.copyWith(color: c.fg1),
                 ),
-                const SizedBox(height: AppSpacing.xs),
+                SizedBox(height: context.spacing.space2),
                 Text(
-                  'Choose a strong password for your account.',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextSecondary,
-                  ),
+                  'Choisissez un mot de passe fort.',
+                  style: context.typography.bodyMd.copyWith(color: c.fg2),
                 ),
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                Text(
-                  'New Password',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.next,
-                    style: AppTypography.body,
-                    decoration: InputDecoration(
-                      hintText: '••••••••',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: context.appTextTertiary,
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
+                SizedBox(height: context.spacing.space6),
+                _FieldLabel(text: 'Nouveau mot de passe'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _passwordController,
+                  hint: '••••••••',
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.next,
+                  suffixIcon: _ObscureToggle(
+                    obscured: _obscurePassword,
+                    onPressed: () => setState(
+                      () => _obscurePassword = !_obscurePassword,
                     ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) {
-                        return 'Password is required';
-                      }
-                      if (v.length < 8) return 'Minimum 8 characters';
-                      return null;
-                    },
                   ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Le mot de passe est requis';
+                    }
+                    if (v.length < 8) return 'Minimum 8 caractères';
+                    return null;
+                  },
                 ),
-
-                const SizedBox(height: AppSpacing.md),
-
-                Text(
-                  'Confirm Password',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _confirmController,
-                    obscureText: _obscureConfirm,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(),
-                    style: AppTypography.body,
-                    decoration: InputDecoration(
-                      hintText: '••••••••',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirm
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: context.appTextTertiary,
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureConfirm = !_obscureConfirm,
-                        ),
-                      ),
+                SizedBox(height: context.spacing.space4),
+                _FieldLabel(text: 'Confirmer le mot de passe'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _confirmController,
+                  hint: '••••••••',
+                  obscureText: _obscureConfirm,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
+                  suffixIcon: _ObscureToggle(
+                    obscured: _obscureConfirm,
+                    onPressed: () => setState(
+                      () => _obscureConfirm = !_obscureConfirm,
                     ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) {
-                        return 'Please confirm your password';
-                      }
-                      if (v != _passwordController.text) {
-                        return 'Passwords do not match';
-                      }
-                      return null;
-                    },
                   ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Confirmez votre mot de passe';
+                    }
+                    if (v != _passwordController.text) {
+                      return 'Les mots de passe ne correspondent pas';
+                    }
+                    return null;
+                  },
                 ),
-
                 if (_error != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: AppColors.errorBg,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                    child: Text(
-                      _error!,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ),
+                  SizedBox(height: context.spacing.space3),
+                  _ErrorBanner(message: _error!),
                 ],
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.appBrand,
-                      foregroundColor: AppColors.white,
-                      disabledBackgroundColor:
-                          context.appBrand.withValues(alpha: 0.3),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.white,
-                            ),
-                          )
-                        : Text(
-                            'Reset Password',
-                            style: AppTypography.bodyLarge.copyWith(
-                              color: AppColors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
+                SizedBox(height: context.spacing.space6),
+                DidoButton.primary(
+                  label: 'Réinitialiser',
+                  loading: _isLoading,
+                  onPressed: _submit,
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Shared auth pieces (inlined per file)
+// ════════════════════════════════════════════════════════════
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration:
+            BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Icon(Icons.arrow_back_ios_new_rounded,
+            size: 16, color: c.fg1),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: context.typography.bodyMd.copyWith(
+        color: context.colors.fg1,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+class _AuthField extends StatelessWidget {
+  const _AuthField({
+    required this.controller,
+    required this.hint,
+    this.textInputAction,
+    this.obscureText = false,
+    this.suffixIcon,
+    this.validator,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final TextInputAction? textInputAction;
+  final bool obscureText;
+  final Widget? suffixIcon;
+  final FormFieldValidator<String>? validator;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final radius = BorderRadius.circular(context.radius.radiusInput);
+    OutlineInputBorder b(Color color, double width) => OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: color, width: width));
+
+    return TextFormField(
+      controller: controller,
+      textInputAction: textInputAction,
+      obscureText: obscureText,
+      autocorrect: !obscureText,
+      onFieldSubmitted: onSubmitted,
+      validator: validator,
+      style: context.typography.input.copyWith(color: c.fg1),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: context.typography.input.copyWith(color: c.fg3),
+        filled: true,
+        fillColor: c.surface1,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space3,
+          vertical: 14,
+        ),
+        isDense: true,
+        border: b(c.border1, 1),
+        enabledBorder: b(c.border1, 1),
+        focusedBorder: b(c.fg1, 1.5),
+        errorBorder: b(c.red, 1),
+        focusedErrorBorder: b(c.red, 1.5),
+        errorStyle: context.typography.bodySmall.copyWith(color: c.redFg),
+        suffixIcon: suffixIcon,
+      ),
+    );
+  }
+}
+
+class _ObscureToggle extends StatelessWidget {
+  const _ObscureToggle({required this.obscured, required this.onPressed});
+  final bool obscured;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        obscured ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+        color: context.colors.fg3,
+        size: 20,
+      ),
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.spacing.space3),
+      decoration: BoxDecoration(
+        color: c.redTint12,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: Text(
+        message,
+        style: context.typography.bodySmall.copyWith(color: c.redFg),
       ),
     );
   }

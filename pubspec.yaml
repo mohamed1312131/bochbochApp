@@ -50,6 +50,9 @@ dependencies:
   # Analytics
   posthog_flutter: ^4.4.1
 
+  # Platform info
+  package_info_plus: ^8.0.0
+
   # Images
   cached_network_image: ^3.4.1
   image_picker: ^1.1.2
@@ -85,14 +88,13 @@ flutter:
     - assets/images/
     - assets/icons/
   fonts:
-    - family: PlusJakartaSans
+    - family: Inter
       fonts:
-        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
-        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
           weight: 500
-        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+        - asset: assets/fonts/Inter-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+        - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
-        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
-          weight: 800

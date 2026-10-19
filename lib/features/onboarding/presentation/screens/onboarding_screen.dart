@@ -3,10 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../shared/widgets/dido_button.dart';
 import '../../../boutiques/presentation/boutique_providers.dart';
@@ -31,23 +27,36 @@ const _governorates = <String>[
   'Autre pays',
 ];
 
-const _swatches = <String>[
-  '#05687B',
-  '#E74C3C',
-  '#3498DB',
-  '#2ECC71',
-  '#F39C12',
-  '#9B59B6',
-  '#1ABC9C',
-  '#E67E22',
+const _goalTypes = <_GoalTypeOption>[
+  _GoalTypeOption('REVENUE', 'Revenu'),
+  _GoalTypeOption('PROFIT', 'Profit'),
+  _GoalTypeOption('ORDERS', 'Commandes'),
+  _GoalTypeOption('NEW_CUSTOMERS', 'Nouveaux clients'),
 ];
 
-const _goalTypes = <String, String>{
-  'REVENUE': 'Revenu',
-  'PROFIT': 'Profit',
-  'ORDERS': 'Commandes',
-  'NEW_CUSTOMERS': 'Nouveaux clients',
-};
+class _GoalTypeOption {
+  const _GoalTypeOption(this.value, this.label);
+  final String value;
+  final String label;
+}
+
+String _suffixForGoalType(String goalType) {
+  return (goalType == 'REVENUE' || goalType == 'PROFIT') ? 'TND' : '';
+}
+
+int _defaultTargetFor(String goalType) {
+  switch (goalType) {
+    case 'REVENUE':
+      return 1500;
+    case 'PROFIT':
+      return 500;
+    case 'ORDERS':
+    case 'NEW_CUSTOMERS':
+      return 100;
+    default:
+      return 1500;
+  }
+}
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -59,17 +68,14 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageController = PageController();
   final _nameCtrl = TextEditingController();
-  final _customColorCtrl = TextEditingController();
   final _targetCtrl = TextEditingController();
   final _labelCtrl = TextEditingController();
-  bool _showCustomColor = false;
   bool _seededFromState = false;
 
   @override
   void dispose() {
     _pageController.dispose();
     _nameCtrl.dispose();
-    _customColorCtrl.dispose();
     _targetCtrl.dispose();
     _labelCtrl.dispose();
     super.dispose();
@@ -87,43 +93,49 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _labelCtrl.text = s.goalLabel ?? '';
   }
 
-  int _defaultTargetFor(String goalType) {
-    switch (goalType) {
-      case 'REVENUE':
-        return 1500;
-      case 'PROFIT':
-        return 500;
-      case 'ORDERS':
-      case 'NEW_CUSTOMERS':
-        return 100;
-      default:
-        return 1500;
-    }
+  void _goToPage(int page) {
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(onboardingNotifierProvider);
+    final c = context.colors;
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: asyncState.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Erreur: $e')),
+          error: (_, __) => Center(
+            child: Padding(
+              padding: EdgeInsets.all(context.spacing.space6),
+              child: const _ErrorBanner(
+                message: 'Une erreur est survenue. Réessaie.',
+              ),
+            ),
+          ),
           data: (s) {
             _seedControllersFromState(s);
             return PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
               children: [
-                _Step1(
+                _StepWelcome(
+                  onContinue: () => _goToPage(1),
+                  onSkip: () {
+                    ref.invalidate(currentBoutiqueProvider);
+                    context.go('/home');
+                  },
+                ),
+                _StepBoutique(
                   state: s,
                   nameCtrl: _nameCtrl,
-                  customColorCtrl: _customColorCtrl,
-                  showCustomColor: _showCustomColor,
-                  onToggleCustomColor: (v) =>
-                      setState(() => _showCustomColor = v),
+                  onBack: () => _goToPage(0),
                   onNext: () async {
                     final messenger = ScaffoldMessenger.of(context);
                     final ok = await ref
@@ -131,15 +143,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         .submitStep1();
                     if (!mounted) return;
                     if (ok) {
-                      _pageController.animateToPage(
-                        1,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                      );
-                    } else if (s.errorMessage != null) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(s.errorMessage!)),
-                      );
+                      _goToPage(2);
+                    } else {
+                      final err = ref
+                          .read(onboardingNotifierProvider)
+                          .valueOrNull
+                          ?.errorMessage;
+                      if (err != null) {
+                        messenger.showSnackBar(
+                            SnackBar(content: Text(err)));
+                      }
                     }
                   },
                   onSkip: () {
@@ -147,22 +160,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     context.go('/home');
                   },
                 ),
-                _Step2(
+                _StepGoal(
                   state: s,
                   targetCtrl: _targetCtrl,
                   labelCtrl: _labelCtrl,
-                  onBack: () => _pageController.animateToPage(
-                    0,
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                  ),
+                  onBack: () => _goToPage(1),
                   onSubmit: () async {
                     final router = GoRouter.of(context);
                     final ok = await ref
                         .read(onboardingNotifierProvider.notifier)
                         .submitStep2();
                     if (!mounted) return;
-                    if (ok) router.go('/home');
+                    if (ok) router.go('/onboarding/success');
                   },
                   onSkip: () async {
                     final router = GoRouter.of(context);
@@ -170,7 +179,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         .read(onboardingNotifierProvider.notifier)
                         .submitStep2(skip: true);
                     if (!mounted) return;
-                    if (ok) router.go('/home');
+                    if (ok) router.go('/onboarding/success');
                   },
                 ),
               ],
@@ -182,60 +191,157 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-// ── Step 1: boutique setup ───────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// Step 0 — Welcome
+// ════════════════════════════════════════════════════════════
+class _StepWelcome extends StatelessWidget {
+  const _StepWelcome({required this.onContinue, required this.onSkip});
 
-class _Step1 extends ConsumerWidget {
-  const _Step1({
+  final VoidCallback onContinue;
+  final VoidCallback onSkip;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(horizontal: context.spacing.space6),
+      child: Column(
+        children: [
+          const SizedBox(height: 60),
+          Text(
+            'DIDO',
+            style: context.typography.h1.copyWith(
+              color: c.fg1,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
+              fontSize: 48,
+            ),
+          ),
+          SizedBox(height: context.spacing.space6),
+          Text(
+            'Bienvenue',
+            style: context.typography.h1.copyWith(color: c.fg1),
+          ),
+          SizedBox(height: context.spacing.space2),
+          Text(
+            'Configure ta boutique en 1 minute. Tu pourras tout modifier plus tard.',
+            style: context.typography.bodyMd.copyWith(color: c.fg2),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: context.spacing.space6),
+          const _ValueProp(text: 'Suivi automatique du bénéfice'),
+          SizedBox(height: context.spacing.space3),
+          const _ValueProp(text: 'Génération de contenu avec IA'),
+          SizedBox(height: context.spacing.space3),
+          const _ValueProp(text: 'Gestion des clients et commandes'),
+          const Spacer(),
+          DidoButton.primary(
+            label: 'Commencer',
+            onPressed: onContinue,
+          ),
+          SizedBox(height: context.spacing.space2),
+          TextButton(
+            onPressed: onSkip,
+            child: Text(
+              'Plus tard',
+              style:
+                  context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+          ),
+          SizedBox(
+              height: context.spacing.space4 +
+                  MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+}
+
+class _ValueProp extends StatelessWidget {
+  const _ValueProp({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 4,
+          decoration: BoxDecoration(color: c.fg2, shape: BoxShape.circle),
+        ),
+        SizedBox(width: context.spacing.space3),
+        Expanded(
+          child: Text(
+            text,
+            style: context.typography.bodyMd.copyWith(color: c.fg2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Step 1 — Boutique
+// ════════════════════════════════════════════════════════════
+class _StepBoutique extends ConsumerWidget {
+  const _StepBoutique({
     required this.state,
     required this.nameCtrl,
-    required this.customColorCtrl,
-    required this.showCustomColor,
-    required this.onToggleCustomColor,
+    required this.onBack,
     required this.onNext,
     required this.onSkip,
   });
 
   final OnboardingState state;
   final TextEditingController nameCtrl;
-  final TextEditingController customColorCtrl;
-  final bool showCustomColor;
-  final ValueChanged<bool> onToggleCustomColor;
+  final VoidCallback onBack;
   final VoidCallback onNext;
   final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final notifier = ref.read(onboardingNotifierProvider.notifier);
     final canAdvance = state.boutiqueName.trim().isNotEmpty &&
         state.boutiqueCategory != null &&
         state.boutiqueCity != null;
-    final initial = state.boutiqueName.isNotEmpty
-        ? state.boutiqueName.characters.first.toUpperCase()
-        : 'D';
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal,
-        vertical: AppSpacing.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Configurons ta boutique',
-            style: AppTypography.h1.copyWith(color: context.appTextPrimary),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Ces infos apparaissent sur tes PDFs et factures.',
-            style: AppTypography.body.copyWith(color: context.appTextSecondary),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          // Logo avatar
-          Center(
-            child: GestureDetector(
-              onTap: state.isUploadingLogo
-                  ? null
-                  : () async {
+
+    return Column(
+      children: [
+        _Header(onBack: onBack),
+        Padding(
+          padding:
+              EdgeInsets.symmetric(horizontal: context.spacing.space6),
+          child: const _ProgressBar(currentStep: 1),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding:
+                EdgeInsets.symmetric(horizontal: context.spacing.space6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: context.spacing.space4),
+                Text(
+                  'Configure ta boutique',
+                  style: context.typography.h1.copyWith(color: c.fg1),
+                ),
+                SizedBox(height: context.spacing.space2),
+                Text(
+                  'Ces infos apparaissent sur tes factures.',
+                  style:
+                      context.typography.bodyMd.copyWith(color: c.fg3),
+                ),
+                SizedBox(height: context.spacing.space6),
+                Center(
+                  child: _LogoAvatar(
+                    state: state,
+                    onPick: () async {
+                      if (state.isUploadingLogo) return;
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(
                         source: ImageSource.gallery,
@@ -247,178 +353,107 @@ class _Step1 extends ConsumerWidget {
                         await notifier.uploadLogo(picked);
                       }
                     },
-              child: Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: context.appBrand,
-                  shape: BoxShape.circle,
-                  image: state.logoUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(state.logoUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: state.isUploadingLogo
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : (state.logoUrl == null
-                        ? Center(
-                            child: Text(
-                              initial,
-                              style: AppTypography.h1.copyWith(
-                                color: AppColors.white,
-                                fontSize: 36,
-                              ),
-                            ),
-                          )
-                        : null),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          _Label('Nom de la boutique'),
-          const SizedBox(height: AppSpacing.xs),
-          TextFormField(
-            controller: nameCtrl,
-            decoration: const InputDecoration(hintText: 'Ex: Shop by Rania'),
-            onChanged: notifier.setBoutiqueName,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _Label('Que vends-tu ?'),
-          const SizedBox(height: AppSpacing.xs),
-          SizedBox(
-            height: 44,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final cat = _categories[i];
-                final selected = state.boutiqueCategory == cat;
-                return ChoiceChip(
-                  label: Text(cat),
-                  selected: selected,
-                  onSelected: (_) => notifier.setBoutiqueCategory(cat),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _Label('Ville'),
-          const SizedBox(height: AppSpacing.xs),
-          DropdownButtonFormField<String>(
-            initialValue: state.boutiqueCity,
-            isExpanded: true,
-            hint: const Text('Choisir un gouvernorat'),
-            items: _governorates
-                .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) notifier.setBoutiqueCity(v);
-            },
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _Label('Couleur de ta marque (optionnel)'),
-          const SizedBox(height: AppSpacing.xs),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              ..._swatches.map((hex) {
-                final selected = state.brandColor == hex;
-                return GestureDetector(
-                  onTap: () {
-                    onToggleCustomColor(false);
-                    notifier.setBrandColor(hex);
-                  },
-                  child: _Swatch(hex: hex, selected: selected),
-                );
-              }),
-              GestureDetector(
-                onTap: () => onToggleCustomColor(!showCustomColor),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: context.appBorder, width: 1.5),
-                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  child: Icon(Icons.add, color: context.appTextPrimary),
                 ),
-              ),
-            ],
-          ),
-          if (showCustomColor) ...[
-            const SizedBox(height: AppSpacing.sm),
-            TextFormField(
-              controller: customColorCtrl,
-              decoration: const InputDecoration(hintText: '#RRGGBB'),
-              onChanged: (v) {
-                if (RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(v)) {
-                  notifier.setBrandColor(v);
-                }
-              },
+                SizedBox(height: context.spacing.space6),
+                const _FieldLabel('Nom de la boutique'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: nameCtrl,
+                  hint: 'Ex: Shop by Rania',
+                  onChanged: notifier.setBoutiqueName,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                SizedBox(height: context.spacing.space4),
+                const _FieldLabel('Que vends-tu ?'),
+                SizedBox(height: context.spacing.space2),
+                _CategoryChipsRow(
+                  selected: state.boutiqueCategory,
+                  onSelected: notifier.setBoutiqueCategory,
+                ),
+                SizedBox(height: context.spacing.space4),
+                const _FieldLabel('Gouvernorat'),
+                SizedBox(height: context.spacing.space2),
+                _GovernorateDropdown(
+                  value: state.boutiqueCity,
+                  onChanged: (v) {
+                    if (v != null) notifier.setBoutiqueCity(v);
+                  },
+                ),
+                SizedBox(height: context.spacing.space6),
+              ],
             ),
-          ],
-          const SizedBox(height: AppSpacing.xxl),
-          DidoButton.primary(
+          ),
+        ),
+        _Footer(
+          primary: DidoButton.primary(
             label: 'Suivant',
             loading: state.isLoading,
             enabled: canAdvance,
             onPressed: canAdvance ? onNext : null,
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Center(
-            child: TextButton(
-              onPressed: state.isLoading ? null : onSkip,
-              child: Text(
-                'Plus tard',
-                style: AppTypography.body.copyWith(
-                  color: context.appTextSecondary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+          onSkip: state.isLoading ? null : onSkip,
+        ),
+      ],
     );
   }
 }
 
-class _Swatch extends StatelessWidget {
-  const _Swatch({required this.hex, required this.selected});
-  final String hex;
-  final bool selected;
+class _LogoAvatar extends StatelessWidget {
+  const _LogoAvatar({required this.state, required this.onPick});
+  final OnboardingState state;
+  final VoidCallback onPick;
+
   @override
   Widget build(BuildContext context) {
-    final color = Color(int.parse('FF${hex.substring(1)}', radix: 16));
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: selected
-            ? Border.all(color: context.appTextPrimary, width: 2)
-            : null,
+    final c = context.colors;
+    final initial = state.boutiqueName.isNotEmpty
+        ? state.boutiqueName.characters.first.toUpperCase()
+        : 'D';
+    return GestureDetector(
+      onTap: state.isUploadingLogo ? null : onPick,
+      child: Container(
+        width: 96,
+        height: 96,
+        decoration: BoxDecoration(
+          color: c.brandTeal,
+          shape: BoxShape.circle,
+          image: state.logoUrl != null
+              ? DecorationImage(
+                  image: NetworkImage(state.logoUrl!),
+                  fit: BoxFit.cover,
+                )
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: state.isUploadingLogo
+            ? SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  color: c.surface0,
+                  strokeWidth: 2,
+                ),
+              )
+            : (state.logoUrl == null
+                ? Text(
+                    initial,
+                    style: context.typography.h1.copyWith(
+                      color: c.surface0,
+                      fontSize: 36,
+                    ),
+                  )
+                : null),
       ),
-      child: selected
-          ? const Icon(Icons.check, color: AppColors.white, size: 18)
-          : null,
     );
   }
 }
 
-// ── Step 2: first goal ───────────────────────────────────────────────────
-
-class _Step2 extends ConsumerWidget {
-  const _Step2({
+// ════════════════════════════════════════════════════════════
+// Step 2 — Goal
+// ════════════════════════════════════════════════════════════
+class _StepGoal extends ConsumerWidget {
+  const _StepGoal({
     required this.state,
     required this.targetCtrl,
     required this.labelCtrl,
@@ -436,139 +471,140 @@ class _Step2 extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final notifier = ref.read(onboardingNotifierProvider.notifier);
     final isTracked = state.goalKind == 'TRACKED';
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal,
-        vertical: AppSpacing.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: onBack,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Quel est ton objectif ce mois-ci ?',
-            style: AppTypography.h1.copyWith(color: context.appTextPrimary),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Tu peux le modifier à tout moment.',
-            style: AppTypography.body.copyWith(color: context.appTextSecondary),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          // Kind toggle
-          Container(
-            decoration: BoxDecoration(
-              color: context.appSurfaceL2,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: context.appBorder),
-            ),
-            padding: const EdgeInsets.all(4),
-            child: Row(
+
+    return Column(
+      children: [
+        _Header(onBack: onBack),
+        Padding(
+          padding:
+              EdgeInsets.symmetric(horizontal: context.spacing.space6),
+          child: const _ProgressBar(currentStep: 2),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding:
+                EdgeInsets.symmetric(horizontal: context.spacing.space6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _KindOption(
-                  label: 'Suivi automatique',
-                  selected: isTracked,
-                  onTap: () => notifier.setGoalKind('TRACKED'),
+                SizedBox(height: context.spacing.space4),
+                Text(
+                  'Quel est ton objectif ce mois-ci ?',
+                  style: context.typography.h1.copyWith(color: c.fg1),
                 ),
-                _KindOption(
-                  label: 'Objectif personnel',
-                  selected: !isTracked,
-                  onTap: () => notifier.setGoalKind('SELF_REPORT'),
+                SizedBox(height: context.spacing.space2),
+                Text(
+                  'Tu peux le modifier à tout moment.',
+                  style:
+                      context.typography.bodyMd.copyWith(color: c.fg3),
                 ),
+                SizedBox(height: context.spacing.space6),
+                _KindToggle(
+                  selected: state.goalKind,
+                  onSelected: notifier.setGoalKind,
+                ),
+                SizedBox(height: context.spacing.space4),
+                if (isTracked) ...[
+                  const _FieldLabel('Type de mesure'),
+                  SizedBox(height: context.spacing.space2),
+                  _GoalTypeChips(
+                    selected: state.goalType,
+                    onSelected: (v) {
+                      notifier.setGoalType(v);
+                      targetCtrl.text =
+                          (state.goalTargetValue ?? _defaultTargetFor(v))
+                              .toString();
+                    },
+                  ),
+                  SizedBox(height: context.spacing.space4),
+                  const _FieldLabel('Cible'),
+                  SizedBox(height: context.spacing.space2),
+                  _AuthField(
+                    controller: targetCtrl,
+                    hint: '1500',
+                    keyboardType: TextInputType.number,
+                    suffix: _suffixForGoalType(state.goalType),
+                    onChanged: (v) =>
+                        notifier.setGoalTargetValue(int.tryParse(v)),
+                  ),
+                ] else ...[
+                  const _FieldLabel('Décris ton objectif'),
+                  SizedBox(height: context.spacing.space2),
+                  _AuthField(
+                    controller: labelCtrl,
+                    hint: '+100 abonnés Facebook',
+                    maxLength: 200,
+                    onChanged: notifier.setGoalLabel,
+                  ),
+                  SizedBox(height: context.spacing.space4),
+                  const _FieldLabel('Cible (optionnelle)'),
+                  SizedBox(height: context.spacing.space2),
+                  _AuthField(
+                    controller: targetCtrl,
+                    hint: '100 (optionnel)',
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) =>
+                        notifier.setGoalTargetValue(int.tryParse(v)),
+                  ),
+                ],
+                if (state.errorMessage != null) ...[
+                  SizedBox(height: context.spacing.space3),
+                  _ErrorBanner(message: state.errorMessage!),
+                ],
+                SizedBox(height: context.spacing.space6),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          if (isTracked) ...[
-            _Label('Type de mesure'),
-            const SizedBox(height: AppSpacing.xs),
-            Wrap(
-              spacing: 8,
-              children: _goalTypes.entries.map((e) {
-                final selected = state.goalType == e.key;
-                return ChoiceChip(
-                  label: Text(e.value),
-                  selected: selected,
-                  onSelected: (_) {
-                    notifier.setGoalType(e.key);
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            _Label('Cible'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: targetCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '1500',
-                suffixText: (state.goalType == 'REVENUE' ||
-                        state.goalType == 'PROFIT')
-                    ? 'TND'
-                    : '',
-              ),
-              onChanged: (v) {
-                final n = int.tryParse(v);
-                notifier.setGoalTargetValue(n);
-              },
-            ),
-          ] else ...[
-            _Label('Décris ton objectif'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: labelCtrl,
-              maxLength: 200,
-              decoration: const InputDecoration(
-                hintText: '+100 abonnés Facebook',
-              ),
-              onChanged: notifier.setGoalLabel,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            _Label('Cible (optionnelle)'),
-            const SizedBox(height: AppSpacing.xs),
-            TextFormField(
-              controller: targetCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(hintText: '100 (optionnel)'),
-              onChanged: (v) {
-                final n = int.tryParse(v);
-                notifier.setGoalTargetValue(n);
-              },
-            ),
-          ],
-          if (state.errorMessage != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              state.errorMessage!,
-              style: AppTypography.bodySmall.copyWith(color: AppColors.error),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.xxl),
-          DidoButton.primary(
+        ),
+        _Footer(
+          primary: DidoButton.primary(
             label: 'Commencer',
             loading: state.isLoading,
             onPressed: onSubmit,
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Center(
-            child: TextButton(
-              onPressed: state.isLoading ? null : onSkip,
-              child: Text(
-                'Plus tard',
-                style: AppTypography.body.copyWith(
-                  color: context.appTextSecondary,
-                ),
+          onSkip: state.isLoading ? null : onSkip,
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Header / Footer / ProgressBar
+// ════════════════════════════════════════════════════════════
+class _Header extends StatelessWidget {
+  const _Header({required this.onBack});
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space6,
+        context.spacing.space3,
+        context.spacing.space6,
+        context.spacing.space3,
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: onBack,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: c.surface2,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: c.fg1,
               ),
             ),
           ),
@@ -578,8 +614,229 @@ class _Step2 extends ConsumerWidget {
   }
 }
 
-class _KindOption extends StatelessWidget {
-  const _KindOption({
+class _Footer extends StatelessWidget {
+  const _Footer({required this.primary, this.onSkip});
+  final Widget primary;
+  final VoidCallback? onSkip;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface0,
+        border: Border(top: BorderSide(color: c.border1, width: 1)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space6,
+        context.spacing.space3,
+        context.spacing.space6,
+        context.spacing.space3 + bottomInset,
+      ),
+      child: Column(
+        children: [
+          primary,
+          if (onSkip != null) ...[
+            SizedBox(height: context.spacing.space1),
+            TextButton(
+              onPressed: onSkip,
+              child: Text(
+                'Plus tard',
+                style:
+                    context.typography.bodyMd.copyWith(color: c.fg3),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({required this.currentStep});
+  final int currentStep;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: c.fg1,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            SizedBox(width: context.spacing.space2),
+            Expanded(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: currentStep >= 2 ? c.fg1 : c.border1,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: context.spacing.space2),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Étape $currentStep sur 2',
+            style: context.typography.bodySmall.copyWith(color: c.fg3),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Inputs / chips / dropdown / toggle
+// ════════════════════════════════════════════════════════════
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: context.typography.bodyMd.copyWith(
+        color: context.colors.fg1,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+class _AuthField extends StatelessWidget {
+  const _AuthField({
+    required this.controller,
+    required this.hint,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.suffix,
+    this.maxLength,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final String? suffix;
+  final int? maxLength;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final radius = BorderRadius.circular(context.radius.radiusInput);
+    OutlineInputBorder b(Color color, double width) =>
+        OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide(color: color, width: width));
+
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      maxLength: maxLength,
+      onChanged: onChanged,
+      style: context.typography.input.copyWith(color: c.fg1),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: context.typography.input.copyWith(color: c.fg3),
+        suffixText: suffix,
+        suffixStyle: context.typography.bodyMd.copyWith(color: c.fg3),
+        filled: true,
+        fillColor: c.surface1,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space3,
+          vertical: 14,
+        ),
+        isDense: true,
+        counterText: '',
+        border: b(c.border1, 1),
+        enabledBorder: b(c.border1, 1),
+        focusedBorder: b(c.fg1, 1.5),
+        errorBorder: b(c.red, 1),
+        focusedErrorBorder: b(c.red, 1.5),
+        errorStyle:
+            context.typography.bodySmall.copyWith(color: c.redFg),
+      ),
+    );
+  }
+}
+
+class _CategoryChipsRow extends StatelessWidget {
+  const _CategoryChipsRow({
+    required this.selected,
+    required this.onSelected,
+  });
+  final String? selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _categories.length,
+        separatorBuilder: (_, __) =>
+            SizedBox(width: context.spacing.space2),
+        itemBuilder: (_, i) {
+          final cat = _categories[i];
+          return _Chip(
+            label: cat,
+            selected: selected == cat,
+            onTap: () => onSelected(cat),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _GoalTypeChips extends StatelessWidget {
+  const _GoalTypeChips({
+    required this.selected,
+    required this.onSelected,
+  });
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final gt in _goalTypes)
+          _Chip(
+            label: gt.label,
+            selected: selected == gt.value,
+            onTap: () => onSelected(gt.value),
+          ),
+      ],
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -587,25 +844,29 @@ class _KindOption extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? context.appBrand : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: context.motion.tap,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? c.fg1 : c.surface1,
+          border: Border.all(
+            color: selected ? c.fg1 : c.border1,
+            width: 1,
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: AppTypography.body.copyWith(
-                color: selected ? AppColors.white : context.appTextPrimary,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
+          borderRadius:
+              BorderRadius.circular(context.radius.radiusChip),
+        ),
+        child: Text(
+          label,
+          style: context.typography.bodyMd.copyWith(
+            color: selected ? c.surface0 : c.fg1,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),
@@ -613,16 +874,166 @@ class _KindOption extends StatelessWidget {
   }
 }
 
-class _Label extends StatelessWidget {
-  const _Label(this.text);
-  final String text;
+class _GovernorateDropdown extends StatelessWidget {
+  const _GovernorateDropdown({required this.value, required this.onChanged});
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: AppTypography.body.copyWith(
-        color: context.appTextPrimary,
-        fontWeight: FontWeight.w500,
+    final c = context.colors;
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: c.surface1,
+        border: Border.all(color: c.border1, width: 1),
+        borderRadius:
+            BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          dropdownColor: c.surface1,
+          hint: Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.space3),
+            child: Text(
+              'Choisir un gouvernorat',
+              style: context.typography.input.copyWith(color: c.fg3),
+            ),
+          ),
+          icon: Padding(
+            padding:
+                EdgeInsets.only(right: context.spacing.space3),
+            child: Icon(Icons.expand_more, size: 20, color: c.fg2),
+          ),
+          items: _governorates
+              .map(
+                (gov) => DropdownMenuItem(
+                  value: gov,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: context.spacing.space3),
+                    child: Text(
+                      gov,
+                      style:
+                          context.typography.input.copyWith(color: c.fg1),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+class _KindToggle extends StatelessWidget {
+  const _KindToggle({required this.selected, required this.onSelected});
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius:
+            BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _KindButton(
+              label: 'Suivi automatique',
+              selected: selected == 'TRACKED',
+              onTap: () => onSelected('TRACKED'),
+            ),
+          ),
+          Expanded(
+            child: _KindButton(
+              label: 'Objectif personnel',
+              selected: selected == 'SELF_REPORT',
+              onTap: () => onSelected('SELF_REPORT'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KindButton extends StatelessWidget {
+  const _KindButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        height: 40,
+        decoration: BoxDecoration(
+          color: selected ? c.surface0 : c.surface2,
+          borderRadius: BorderRadius.circular(
+              context.radius.radiusInput - 2),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: context.typography.bodyMd.copyWith(
+            color: selected ? c.fg1 : c.fg2,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: EdgeInsets.all(context.spacing.space3),
+      decoration: BoxDecoration(
+        color: c.coralTint12,
+        borderRadius:
+            BorderRadius.circular(context.radius.radiusCard),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, size: 18, color: c.coralFg),
+          SizedBox(width: context.spacing.space2),
+          Expanded(
+            child: Text(
+              message,
+              style: context.typography.bodySmall.copyWith(
+                color: c.coralFg,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

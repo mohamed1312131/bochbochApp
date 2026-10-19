@@ -1,24 +1,50 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/theme/app_theme_extension.dart';
-import '../../../../core/utils/millimes_formatter.dart';
-import '../../../../core/utils/date_formatter.dart';
-import '../providers/order_provider.dart';
-import '../../domain/order_models.dart';
 
-final _orderScreenUserProvider =
-    FutureProvider.autoDispose<String>((ref) async {
-  const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  return await storage.read(key: 'user_full_name') ?? '';
-});
+import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/utils/millimes_formatter.dart';
+import '../../../../shared/providers/user_name_provider.dart';
+import '../../../../shared/widgets/order_flag_pill.dart';
+import '../../../../shared/widgets/status_badge.dart';
+import '../../domain/order_models.dart';
+import '../providers/order_provider.dart';
+import '../widgets/bulk_actions_sheet.dart';
+
+// TODO(home): wire to real data — boutique provider
+const _mockBoutiqueName = 'Boutique Sania';
+const _mockBoutiqueInitial = 'S';
+
+// TODO(notifs): wire to real data — notifications provider
+const _mockHasUnreadNotifs = true;
+
+const _kDateLabels = <String, String>{
+  'all': 'Toute la période',
+  'today': "Aujourd'hui",
+  '3days': '3 derniers jours',
+  'week': 'Cette semaine',
+  'month': 'Ce mois-ci',
+};
+
+const _kStatusLabels = <String, String>{
+  'PENDING': 'En attente',
+  'CONFIRMED': 'Confirmée',
+  'SHIPPED': 'Expédiée',
+  'DELIVERED': 'Livrée',
+  'CANCELLED': 'Annulée',
+};
+
+enum _OrdersTab { toutes, enAttente, livrees, retours }
+
+String? _statusForTab(_OrdersTab t) => switch (t) {
+      _OrdersTab.toutes => null,
+      _OrdersTab.enAttente => 'PENDING',
+      _OrdersTab.livrees => 'DELIVERED',
+      _OrdersTab.retours => null, // returns are out-of-band
+    };
 
 class OrderListScreen extends ConsumerStatefulWidget {
   const OrderListScreen({super.key});
@@ -30,12 +56,24 @@ class OrderListScreen extends ConsumerStatefulWidget {
 class _OrderListScreenState extends ConsumerState<OrderListScreen> {
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
-  String? _selectedStatus;
-  String _searchQuery = '';
-  String _dateFilter = 'today';
 
-  bool get _hasActiveFilter =>
-      _selectedStatus != null || _dateFilter != 'today';
+  _OrdersTab _selectedTab = _OrdersTab.toutes;
+  String? _extraStatus; // status from filter sheet that doesn't match a tab
+  String _dateFilter = 'all';
+  String _searchQuery = '';
+
+  // F13 — multi-select state. Long-press on any row enters the mode;
+  // tap toggles the row's selection.
+  bool _multiSelect = false;
+  final Set<String> _selectedOrderIds = <String>{};
+
+  bool get _isReturns => _selectedTab == _OrdersTab.retours;
+
+  String? get _effectiveStatus =>
+      _isReturns ? null : (_extraStatus ?? _statusForTab(_selectedTab));
+
+  bool get _hasExtraFilters =>
+      _dateFilter != 'all' || _extraStatus != null;
 
   @override
   void initState() {
@@ -51,15 +89,15 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
   }
 
   void _onScroll() {
+    if (_isReturns) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       ref.read(orderListProvider.notifier).loadMore();
     }
   }
 
-  bool _matchesDateFilter(OrderLean order) {
+  bool _matchesDateFilter(DateTime date) {
     final now = DateTime.now();
-    final date = order.createdAt;
     return switch (_dateFilter) {
       'today' => date.year == now.year &&
           date.month == now.month &&
@@ -71,13 +109,6 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
     };
   }
 
-  String _greeting() {
-    final hour = DateTime.now().toUtc().add(const Duration(hours: 1)).hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
-
   void _showFilterSheet() {
     showModalBottomSheet(
       context: context,
@@ -86,391 +117,1001 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _OrderFilterSheet(
         initialDate: _dateFilter,
-        initialStatus: _selectedStatus,
+        initialStatus: _effectiveStatus,
         onApply: (date, status) {
           setState(() {
             _dateFilter = date;
-            _selectedStatus = status;
+            // Map sheet status back to tab + extra fields.
+            switch (status) {
+              case null:
+                _selectedTab = _OrdersTab.toutes;
+                _extraStatus = null;
+              case 'PENDING':
+                _selectedTab = _OrdersTab.enAttente;
+                _extraStatus = null;
+              case 'DELIVERED':
+                _selectedTab = _OrdersTab.livrees;
+                _extraStatus = null;
+              default:
+                _selectedTab = _OrdersTab.toutes;
+                _extraStatus = status;
+            }
           });
         },
       ),
     );
   }
 
+  void _clearFilters() {
+    setState(() {
+      _dateFilter = 'all';
+      _extraStatus = null;
+    });
+  }
+
+  void _enterMultiSelect(String firstOrderId) {
+    setState(() {
+      _multiSelect = true;
+      _selectedOrderIds
+        ..clear()
+        ..add(firstOrderId);
+    });
+  }
+
+  void _exitMultiSelect() {
+    setState(() {
+      _multiSelect = false;
+      _selectedOrderIds.clear();
+    });
+  }
+
+  void _toggleSelection(String orderId) {
+    setState(() {
+      if (_selectedOrderIds.contains(orderId)) {
+        _selectedOrderIds.remove(orderId);
+        if (_selectedOrderIds.isEmpty) _multiSelect = false;
+      } else {
+        _selectedOrderIds.add(orderId);
+      }
+    });
+  }
+
+  Future<void> _openBulkActions() async {
+    if (_selectedOrderIds.isEmpty) return;
+    final ok = await showBulkActionsSheet(
+      context: context,
+      orderIds: _selectedOrderIds.toList(growable: false),
+    );
+    if (ok && mounted) _exitMultiSelect();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final ordersAsync = ref.watch(orderListProvider);
-    final userAsync = ref.watch(_orderScreenUserProvider);
-    final firstName = userAsync.maybeWhen(
-      data: (name) => name.split(' ').first,
-      orElse: () => '',
+    final userAsync = ref.watch(userNameProvider);
+    final userInitial = userAsync.maybeWhen(
+      data: (name) => name.isNotEmpty ? name[0].toUpperCase() : 'M',
+      orElse: () => 'M',
     );
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ─────────────────────────────
+            // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal,
-                AppSpacing.xl,
-                AppSpacing.screenHorizontal,
-                AppSpacing.md,
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                context.spacing.space4,
+                context.spacing.screenEdge,
+                context.spacing.space2,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_greeting()} 👋',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: context.appTextSecondary,
-                        ),
+                  const _BoutiqueChip(),
+                  _UserAvatar(initial: userInitial),
+                ],
+              ),
+            ),
+            // Title
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.screenEdge,
+                vertical: context.spacing.space3,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Commandes',
+                  style: context.typography.h1.copyWith(color: c.fg1),
+                ),
+              ),
+            ),
+            // Search + filter
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.screenEdge,
+              ),
+              child: _SearchRow(
+                controller: _searchController,
+                onChanged: (v) =>
+                    setState(() => _searchQuery = v.toLowerCase()),
+                hasActiveFilters: _hasExtraFilters,
+                onFilterTap: _showFilterSheet,
+              ),
+            ),
+            SizedBox(height: context.spacing.space3),
+            // Tab strip
+            _TabStrip(
+              selected: _selectedTab,
+              onSelect: (t) => setState(() => _selectedTab = t),
+            ),
+            // Active filter pills
+            if (_hasExtraFilters)
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  context.spacing.screenEdge,
+                  context.spacing.space3,
+                  context.spacing.screenEdge,
+                  0,
+                ),
+                child: _ActiveFilterRow(
+                  dateFilter: _dateFilter,
+                  extraStatus: _extraStatus,
+                  onRemoveDate: () => setState(() => _dateFilter = 'all'),
+                  onRemoveStatus: () => setState(() => _extraStatus = null),
+                  onClearAll: _clearFilters,
+                ),
+              ),
+            // Content
+            Expanded(
+              child: _isReturns
+                  ? const _RetoursEmptyState()
+                  : ordersAsync.when(
+                      loading: () => const _OrderListSkeleton(),
+                      error: (e, _) => _ErrorState(
+                        onRetry: () =>
+                            ref.read(orderListProvider.notifier).refresh(),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Orders',
-                        style: AppTypography.h1.copyWith(
-                          color: context.appTextPrimary,
-                        ),
-                      ),
-                    ],
+                      data: (orders) {
+                        final filtered = _applyFilters(orders);
+                        if (orders.isEmpty) return const _OrdersEmptyState();
+                        if (filtered.isEmpty) {
+                          return _NoMatchState(onClear: _clearFilters);
+                        }
+                        return RefreshIndicator(
+                          color: c.fg1,
+                          onRefresh: () =>
+                              ref.read(orderListProvider.notifier).refresh(),
+                          child: _OrdersList(
+                            orders: filtered,
+                            scrollController: _scrollController,
+                            multiSelect: _multiSelect,
+                            selectedIds: _selectedOrderIds,
+                            onLongPress: _enterMultiSelect,
+                            onTapSelect: _toggleSelection,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton:
+          _multiSelect ? null : const _OrdersFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: _multiSelect
+          ? _MultiSelectActionBar(
+              count: _selectedOrderIds.length,
+              onCancel: _exitMultiSelect,
+              onActions: _openBulkActions,
+            )
+          : null,
+    );
+  }
+
+  List<OrderLean> _applyFilters(List<OrderLean> orders) {
+    final status = _effectiveStatus;
+    return orders.where((o) {
+      final matchesSearch = _searchQuery.isEmpty ||
+          o.customerName.toLowerCase().contains(_searchQuery) ||
+          o.customerPhone.toLowerCase().contains(_searchQuery) ||
+          o.orderNumber.toLowerCase().contains(_searchQuery);
+      final matchesDate = _matchesDateFilter(o.createdAt);
+      final matchesStatus = status == null || o.status == status;
+      return matchesSearch && matchesDate && matchesStatus;
+    }).toList();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Reusable: scale + haptic tap feedback (no Material ripple)
+// TODO(extract): duplicates _ScaleTap in home_screen.dart — promote
+// to lib/shared/widgets/scale_tap.dart in a follow-up prompt.
+// ════════════════════════════════════════════════════════════
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.98,
+  });
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.onTap == null
+          ? null
+          : (_) {
+              _set(true);
+              HapticFeedback.lightImpact();
+            },
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _set(false);
+              widget.onTap!();
+            },
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Header pieces — duplicate of home_screen's private widgets.
+// TODO(extract): promote BoutiqueChip + UserAvatar to lib/shared/widgets/
+// in a follow-up prompt and delete these duplicates.
+// ════════════════════════════════════════════════════════════
+class _BoutiqueChip extends StatelessWidget {
+  const _BoutiqueChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () {
+        // TODO(home): open boutique switcher bottom sheet
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: c.surface1,
+          border: Border.all(color: c.border1),
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: c.brandTeal,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _mockBoutiqueInitial,
+                style: context.typography.label.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.surface0,
+                ),
+              ),
+            ),
+            SizedBox(width: context.spacing.space2),
+            Text(
+              _mockBoutiqueName,
+              style: context.typography.bodyMd.copyWith(color: c.fg1),
+            ),
+            SizedBox(width: context.spacing.space1),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: c.fg3),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserAvatar extends StatelessWidget {
+  const _UserAvatar({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () => context.push('/settings'),
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.brandTealTint08,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: context.typography.bodySmallMd.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.brandTeal,
+                ),
+              ),
+            ),
+            if (_mockHasUnreadNotifs)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: c.coral,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.surface0, width: 2),
                   ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Search row + filter button (§3.8)
+// ════════════════════════════════════════════════════════════
+class _SearchRow extends StatelessWidget {
+  const _SearchRow({
+    required this.controller,
+    required this.onChanged,
+    required this.hasActiveFilters,
+    required this.onFilterTap,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final bool hasActiveFilters;
+  final VoidCallback onFilterTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(context.radius.radiusInput),
+            ),
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              style: context.typography.input.copyWith(color: c.fg1),
+              decoration: InputDecoration(
+                hintText: 'Nom, téléphone…',
+                hintStyle:
+                    context.typography.input.copyWith(color: c.fg3),
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: c.fg3, size: 20),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 14),
+                isDense: true,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: context.spacing.space2),
+        _ScaleTap(
+          onTap: onFilterTap,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: c.surface1,
+                    border: Border.all(color: c.border1),
+                    borderRadius:
+                        BorderRadius.circular(context.radius.radiusInput),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(Icons.tune_rounded, size: 20, color: c.fg1),
+                ),
+                if (hasActiveFilters)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: c.coral,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Tab strip (§3.7) — underline-only active state
+// ════════════════════════════════════════════════════════════
+class _TabStrip extends StatelessWidget {
+  const _TabStrip({required this.selected, required this.onSelect});
+  final _OrdersTab selected;
+  final ValueChanged<_OrdersTab> onSelect;
+
+  static const _entries = <(_OrdersTab, String)>[
+    (_OrdersTab.toutes, 'Toutes'),
+    (_OrdersTab.enAttente, 'En attente'),
+    (_OrdersTab.livrees, 'Livrées'),
+    (_OrdersTab.retours, 'Retours'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: c.border1, width: 1)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: context.spacing.screenEdge),
+        child: Row(
+          children: [
+            for (final (tab, label) in _entries) ...[
+              _Tab(
+                label: label,
+                active: selected == tab,
+                onTap: () => onSelect(tab),
+              ),
+              SizedBox(width: context.spacing.space6),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  const _Tab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: context.motion.base,
+        curve: context.motion.easeOut,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? c.fg1 : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: context.typography.h4.copyWith(
+            color: active ? c.fg1 : c.fg3,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Active filter pill row
+// ════════════════════════════════════════════════════════════
+class _ActiveFilterRow extends StatelessWidget {
+  const _ActiveFilterRow({
+    required this.dateFilter,
+    required this.extraStatus,
+    required this.onRemoveDate,
+    required this.onRemoveStatus,
+    required this.onClearAll,
+  });
+
+  final String dateFilter;
+  final String? extraStatus;
+  final VoidCallback onRemoveDate;
+  final VoidCallback onRemoveStatus;
+  final VoidCallback onClearAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Row(
+      children: [
+        Icon(Icons.filter_list_rounded, size: 14, color: c.fg3),
+        SizedBox(width: context.spacing.space2),
+        if (dateFilter != 'all')
+          _ActivePill(
+            label: _kDateLabels[dateFilter] ?? dateFilter,
+            onRemove: onRemoveDate,
+          ),
+        if (extraStatus != null) ...[
+          SizedBox(width: context.spacing.space2),
+          _ActivePill(
+            label: _kStatusLabels[extraStatus!] ?? extraStatus!,
+            onRemove: onRemoveStatus,
+          ),
+        ],
+        const Spacer(),
+        _ScaleTap(
+          onTap: onClearAll,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Text(
+              'Tout effacer',
+              style: context.typography.bodySmallMd.copyWith(color: c.coralFg),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActivePill extends StatelessWidget {
+  const _ActivePill({required this.label, required this.onRemove});
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(context.radius.radiusChip),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: context.typography.tabPill.copyWith(color: c.fg1),
+          ),
+          SizedBox(width: context.spacing.space1),
+          GestureDetector(
+            onTap: onRemove,
+            child: Icon(Icons.close_rounded, size: 12, color: c.fg2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Orders list — single card with internal dividers (§3.5)
+// ════════════════════════════════════════════════════════════
+class _OrdersList extends ConsumerWidget {
+  const _OrdersList({
+    required this.orders,
+    required this.scrollController,
+    required this.multiSelect,
+    required this.selectedIds,
+    required this.onLongPress,
+    required this.onTapSelect,
+  });
+  final List<OrderLean> orders;
+  final ScrollController scrollController;
+  final bool multiSelect;
+  final Set<String> selectedIds;
+  final ValueChanged<String> onLongPress;
+  final ValueChanged<String> onTapSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return ListView(
+      controller: scrollController,
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.screenEdge,
+        context.spacing.space3,
+        context.spacing.screenEdge,
+        96,
+      ),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: c.surface1,
+            border: Border.all(color: c.border1),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (var i = 0; i < orders.length; i++) ...[
+                _OrderRow(
+                  order: orders[i],
+                  onStatusChanged: () =>
+                      ref.read(orderListProvider.notifier).refresh(),
+                  multiSelect: multiSelect,
+                  selected: selectedIds.contains(orders[i].id),
+                  onLongPress: () => onLongPress(orders[i].id),
+                  onTapSelect: () => onTapSelect(orders[i].id),
+                ),
+                if (i < orders.length - 1)
+                  Container(
+                    height: 1,
+                    color: c.border1,
+                    margin: EdgeInsets.only(left: context.spacing.space4 * 2),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Order row (§3.5) with swipe-to-advance-status
+// ════════════════════════════════════════════════════════════
+class _OrderRow extends ConsumerWidget {
+  const _OrderRow({
+    required this.order,
+    required this.onStatusChanged,
+    required this.multiSelect,
+    required this.selected,
+    required this.onLongPress,
+    required this.onTapSelect,
+  });
+  final OrderLean order;
+  final VoidCallback onStatusChanged;
+  final bool multiSelect;
+  final bool selected;
+  final VoidCallback onLongPress;
+  final VoidCallback onTapSelect;
+
+  String? _nextStatus(String s) => switch (s) {
+        'PENDING' => 'CONFIRMED',
+        'CONFIRMED' => 'SHIPPED',
+        'SHIPPED' => 'DELIVERED',
+        _ => null,
+      };
+
+  Future<void> _advance(
+    BuildContext context,
+    WidgetRef ref,
+    String next,
+  ) async {
+    HapticFeedback.mediumImpact();
+    try {
+      await ref.read(orderRepositoryProvider).updateStatus(order.id, next);
+      onStatusChanged();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: context.colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final next = _nextStatus(order.status);
+
+    final rowContent = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.spacing.space4,
+        vertical: context.spacing.space3,
+      ),
+      child: Row(
+        children: [
+          // Multi-select checkbox replaces the chevron when in mode.
+          if (multiSelect) ...[
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: selected ? c.brandTeal : c.surface0,
+                border: Border.all(
+                  color: selected ? c.brandTeal : c.border2,
+                  width: 1.5,
+                ),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: selected
+                  ? Icon(Icons.check, size: 14, color: c.surface0)
+                  : null,
+            ),
+            SizedBox(width: context.spacing.space3),
+          ],
+          // Avatar
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              order.customerName.isNotEmpty
+                  ? order.customerName[0].toUpperCase()
+                  : '?',
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+          ),
+          SizedBox(width: context.spacing.space3),
+            // Body
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
                     children: [
-                      GestureDetector(
-                        onTap: () => context.push('/orders/add'),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: context.appBrand,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: const Icon(Icons.add_rounded,
-                              color: AppColors.white, size: 24),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      GestureDetector(
-                        onTap: () => context.push('/settings'),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: context.appBrandLight,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                            border: Border.all(
-                              color:
-                                  context.appBrand.withValues(alpha: 0.2),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              firstName.isNotEmpty
-                                  ? firstName[0].toUpperCase()
-                                  : 'U',
-                              style: AppTypography.h4.copyWith(
-                                color: context.appBrand,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Search + Filter ────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: context.appSurface,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: context.appBorder),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: context.appTextPrimary,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Search orders...',
-                          hintStyle: AppTypography.bodySmall.copyWith(
-                            color: context.appTextTertiary,
-                          ),
-                          prefixIcon: Icon(Icons.search_rounded,
-                              color: context.appTextTertiary, size: 18),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                        onChanged: (value) => setState(
-                            () => _searchQuery = value.toLowerCase()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  // Filter button
-                  GestureDetector(
-                    onTap: _showFilterSheet,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _hasActiveFilter
-                            ? context.appBrand
-                            : context.appSurface,
-                        borderRadius:
-                            BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(
-                          color: _hasActiveFilter
-                              ? context.appBrand
-                              : context.appBorder,
-                        ),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.tune_rounded,
-                            size: 20,
-                            color: _hasActiveFilter
-                                ? AppColors.white
-                                : context.appTextSecondary,
-                          ),
-                          if (_hasActiveFilter)
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.sm),
-
-            // ── Active filter pills ────────────────
-            if (_hasActiveFilter)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenHorizontal,
-                  0,
-                  AppSpacing.screenHorizontal,
-                  AppSpacing.sm,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.filter_list_rounded,
-                        size: 14, color: context.appTextTertiary),
-                    const SizedBox(width: 6),
-                    if (_dateFilter != 'today' && _dateFilter != 'all')
-                      _ActivePill(
-                        label: _dateLabelMap[_dateFilter] ?? _dateFilter,
-                        onRemove: () =>
-                            setState(() => _dateFilter = 'today'),
-                      ),
-                    if (_selectedStatus != null) ...[
-                      const SizedBox(width: 6),
-                      _ActivePill(
-                        label: _selectedStatus!,
-                        onRemove: () =>
-                            setState(() => _selectedStatus = null),
-                      ),
-                    ],
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () => setState(() {
-                        _dateFilter = 'today';
-                        _selectedStatus = null;
-                      }),
-                      child: Text(
-                        'Clear all',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.error,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // ── Content ────────────────────────────
-            Expanded(
-              child: ordersAsync.when(
-                loading: () => const _OrderListSkeleton(),
-                error: (e, _) => _ErrorState(
-                  onRetry: () =>
-                      ref.read(orderListProvider.notifier).refresh(),
-                ),
-                data: (orders) {
-                  final filtered = orders.where((o) {
-                    final matchesSearch = _searchQuery.isEmpty ||
-                        o.customerName
-                            .toLowerCase()
-                            .contains(_searchQuery);
-                    final matchesDate = _matchesDateFilter(o);
-                    final matchesStatus = _selectedStatus == null ||
-                        o.status == _selectedStatus;
-                    return matchesSearch && matchesDate && matchesStatus;
-                  }).toList();
-
-                  if (orders.isEmpty) return const _EmptyState();
-
-                  if (filtered.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off_rounded,
-                              size: 48,
-                              color: context.appTextTertiary),
-                          const SizedBox(height: AppSpacing.md),
-                          Text('No orders found',
-                              style: AppTypography.h4.copyWith(
-                                  color: context.appTextPrimary)),
-                          const SizedBox(height: AppSpacing.sm),
-                          GestureDetector(
-                            onTap: () => setState(() {
-                              _dateFilter = 'today';
-                              _selectedStatus = null;
-                            }),
-                            child: Text(
-                              'Clear filters',
-                              style: AppTypography.body.copyWith(
-                                color: context.appBrand,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final totalRevenue = filtered.fold<int>(
-                      0, (sum, o) => sum + o.netRevenue);
-                  final totalProfit = filtered.fold<int>(
-                      0, (sum, o) => sum + o.orderProfit);
-
-                  return Column(
-                    children: [
-                      // Summary bar
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.screenHorizontal,
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.appSurface,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
-                            border:
-                                Border.all(color: context.appBorder),
-                          ),
-                          child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${filtered.length} order${filtered.length == 1 ? '' : 's'}',
-                                style: AppTypography.label.copyWith(
-                                  color: context.appTextSecondary,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Text(
-                                    MillimesFormatter.format(totalRevenue),
-                                    style: AppTypography.label.copyWith(
-                                      color: context.appTextPrimary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Text(' · ',
-                                      style: AppTypography.label.copyWith(
-                                          color:
-                                              context.appTextTertiary)),
-                                  Text(
-                                    '+${MillimesFormatter.format(totalProfit)}',
-                                    style: AppTypography.label.copyWith(
-                                      color: AppColors.success,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: AppSpacing.sm),
-
                       Expanded(
-                        child: RefreshIndicator(
-                          color: context.appBrand,
-                          onRefresh: () => ref
-                              .read(orderListProvider.notifier)
-                              .refresh(),
-                          child: ListView.separated(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.screenHorizontal,
-                              0,
-                              AppSpacing.screenHorizontal,
-                              100,
-                            ),
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: AppSpacing.xs),
-                            itemBuilder: (context, index) => _OrderCard(
-                              order: filtered[index],
-                              onStatusChanged: () => ref
-                                  .read(orderListProvider.notifier)
-                                  .refresh(),
-                            ),
-                          ),
+                        child: Text(
+                          order.customerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.typography.h4.copyWith(color: c.fg1),
                         ),
                       ),
+                      SizedBox(width: context.spacing.space2),
+                      Text(
+                        MillimesFormatter.format(order.netRevenue),
+                        textAlign: TextAlign.end,
+                        style: context.typography.bodyMd.copyWith(color: c.fg1),
+                      ),
                     ],
-                  );
-                },
+                  ),
+                  SizedBox(height: context.spacing.space1),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${order.customerPhone} · ${order.orderNumber}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              context.typography.bodySmall.copyWith(color: c.fg3),
+                        ),
+                      ),
+                      SizedBox(width: context.spacing.space2),
+                      Text(
+                        DateFormatter.relative(order.createdAt),
+                        style:
+                            context.typography.bodySmall.copyWith(color: c.fg3),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.spacing.space2),
+                  StatusBadge(status: order.status),
+                  if (order.flags.isNotEmpty) ...[
+                    SizedBox(height: context.spacing.space2),
+                    _FlagRow(order: order),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: context.spacing.space2),
+            if (!multiSelect)
+              Icon(Icons.chevron_right_rounded, size: 16, color: c.fg3),
+          ],
+        ),
+      );
+
+    // Wrap with gesture handlers. In multi-select mode, taps toggle
+    // selection and long-press is a no-op; in normal mode, tap opens
+    // the order detail and long-press enters multi-select.
+    final row = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: multiSelect
+          ? onTapSelect
+          : () => context.push('/orders/${order.id}'),
+      onLongPress: multiSelect ? null : onLongPress,
+      child: Container(
+        color: multiSelect && selected
+            ? c.brandTealTint08
+            : Colors.transparent,
+        child: rowContent,
+      ),
+    );
+
+    // Swipe-to-advance is disabled while in multi-select mode.
+    if (multiSelect || next == null) return row;
+
+    return Dismissible(
+      key: Key(order.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        await _advance(context, ref, next);
+        return false;
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: context.spacing.space4),
+        color: c.fg1,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Icon(Icons.check_circle_outline_rounded,
+                color: c.surface0, size: 22),
+            SizedBox(height: context.spacing.space1),
+            Text(
+              _kStatusLabels[next] ?? next,
+              style: context.typography.tabPill.copyWith(color: c.surface0),
+            ),
+          ],
+        ),
+      ),
+      child: row,
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Empty / Error / NoMatch / Skeleton
+// ════════════════════════════════════════════════════════════
+class _OrdersEmptyState extends StatelessWidget {
+  const _OrdersEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.receipt_long_outlined, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Aucune commande',
+              style: context.typography.h3.copyWith(color: c.fg2),
+            ),
+            SizedBox(height: context.spacing.space1),
+            Text(
+              "Tu n'as pas encore de commandes.",
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+            SizedBox(height: context.spacing.space4),
+            _PrimaryCta(
+              label: 'Nouvelle commande',
+              onTap: () => context.push('/orders/add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RetoursEmptyState extends StatelessWidget {
+  const _RetoursEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.assignment_return_outlined, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Aucun retour',
+              style: context.typography.h3.copyWith(color: c.fg2),
+            ),
+            SizedBox(height: context.spacing.space1),
+            Text(
+              'Les retours apparaîtront ici.',
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoMatchState extends StatelessWidget {
+  const _NoMatchState({required this.onClear});
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Aucun résultat',
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+            SizedBox(height: context.spacing.space2),
+            _ScaleTap(
+              onTap: onClear,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 6),
+                child: Text(
+                  'Effacer les filtres',
+                  style: context.typography.button.copyWith(color: c.fg1),
+                ),
               ),
             ),
           ],
@@ -480,15 +1121,195 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
   }
 }
 
-const _dateLabelMap = {
-  'today': 'Today',
-  '3days': 'Last 3 days',
-  'week': 'Last week',
-  'month': 'This month',
-  'all': 'All time',
-};
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.onRetry});
+  final VoidCallback onRetry;
 
-// ── Filter Sheet ───────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Impossible de charger les commandes',
+              textAlign: TextAlign.center,
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+            SizedBox(height: context.spacing.space4),
+            _PrimaryCta(label: 'Réessayer', onTap: onRetry),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OrderListSkeleton extends StatelessWidget {
+  const _OrderListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.screenEdge,
+        context.spacing.space3,
+        context.spacing.screenEdge,
+        96,
+      ),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: c.surface1,
+            border: Border.all(color: c.border1),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (var i = 0; i < 5; i++) ...[
+                const _SkeletonRow(),
+                if (i < 4)
+                  Container(
+                    height: 1,
+                    color: c.border1,
+                    margin: EdgeInsets.only(left: context.spacing.space4 * 2),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    Widget bar({required double width, required double height}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: c.surface2,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+            duration: const Duration(milliseconds: 1500),
+            color: c.surface3,
+          );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.spacing.space4,
+        vertical: context.spacing.space3,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              shape: BoxShape.circle,
+            ),
+          ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                duration: const Duration(milliseconds: 1500),
+                color: c.surface3,
+              ),
+          SizedBox(width: context.spacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                bar(width: 140, height: 14),
+                SizedBox(height: context.spacing.space1),
+                bar(width: 200, height: 12),
+                SizedBox(height: context.spacing.space2),
+                bar(width: 64, height: 16),
+              ],
+            ),
+          ),
+          SizedBox(width: context.spacing.space2),
+          bar(width: 56, height: 14),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// FAB — bottom-right floating (§3.9)
+// ════════════════════════════════════════════════════════════
+class _OrdersFab extends StatelessWidget {
+  const _OrdersFab();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      pressedScale: 0.96,
+      onTap: () => context.push('/orders/add'),
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: c.fg1,
+          shape: BoxShape.circle,
+          boxShadow: context.shadows.shadowFab,
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.add_rounded, color: c.surface0, size: 26),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Inline v1.1-compliant primary button (used in Empty / Error states)
+// NOTE: not using DidoButton.primary — that widget still backgrounds
+// with appBrand (teal), violating v1.1 §3.1. DidoButton needs its own
+// refactor prompt; for now we inline a token-driven primary.
+// ════════════════════════════════════════════════════════════
+class _PrimaryCta extends StatelessWidget {
+  const _PrimaryCta({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: c.fg1,
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
+        ),
+        child: Text(
+          label,
+          style: context.typography.button.copyWith(color: c.surface0),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Filter bottom sheet (§3.12) — date range + secondary status
+// ════════════════════════════════════════════════════════════
 class _OrderFilterSheet extends StatefulWidget {
   const _OrderFilterSheet({
     required this.initialDate,
@@ -498,118 +1319,96 @@ class _OrderFilterSheet extends StatefulWidget {
 
   final String initialDate;
   final String? initialStatus;
-  final Function(String date, String? status) onApply;
+  final void Function(String date, String? status) onApply;
 
   @override
   State<_OrderFilterSheet> createState() => _OrderFilterSheetState();
 }
 
 class _OrderFilterSheetState extends State<_OrderFilterSheet> {
-  late String _date;
-  late String? _status;
+  late String _date = widget.initialDate;
+  late String? _status = widget.initialStatus;
 
-  @override
-  void initState() {
-    super.initState();
-    _date = widget.initialDate;
-    _status = widget.initialStatus;
-  }
+  static const _dateOptions = <(String, String)>[
+    ('all', 'Toute la période'),
+    ('today', "Aujourd'hui"),
+    ('3days', '3 derniers jours'),
+    ('week', 'Cette semaine'),
+    ('month', 'Ce mois-ci'),
+  ];
+
+  static const _statusOptions = <(String?, String)>[
+    (null, 'Toutes'),
+    ('PENDING', 'En attente'),
+    ('CONFIRMED', 'Confirmée'),
+    ('SHIPPED', 'Expédiée'),
+    ('DELIVERED', 'Livrée'),
+    ('CANCELLED', 'Annulée'),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       decoration: BoxDecoration(
-        color: context.appBackground,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(AppRadius.xl),
-          topRight: Radius.circular(AppRadius.xl),
+        color: c.surface1,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(context.radius.radiusSheet),
+          topRight: Radius.circular(context.radius.radiusSheet),
         ),
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.xl),
+          padding: EdgeInsets.fromLTRB(
+            context.spacing.space4,
+            context.spacing.space2,
+            context.spacing.space4,
+            context.spacing.space6,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: context.appBorder,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    color: c.border2,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // Date section
-              Text('Date Range',
-                  style: AppTypography.h4
-                      .copyWith(color: context.appTextPrimary)),
-              const SizedBox(height: AppSpacing.sm),
-              ...[
-                ('today', 'Today'),
-                ('3days', 'Last 3 days'),
-                ('week', 'Last week'),
-                ('month', 'This month'),
-                ('all', 'All time'),
-              ].map((entry) => _RadioTile(
-                    label: entry.$2,
-                    selected: _date == entry.$1,
-                    onTap: () => setState(() => _date = entry.$1),
-                  )),
-
-              const SizedBox(height: AppSpacing.lg),
-
-              // Status section
-              Text('Status',
-                  style: AppTypography.h4
-                      .copyWith(color: context.appTextPrimary)),
-              const SizedBox(height: AppSpacing.sm),
-              ...[
-                (null, 'All'),
-                ('PENDING', 'Pending'),
-                ('CONFIRMED', 'Confirmed'),
-                ('SHIPPED', 'Shipped'),
-                ('DELIVERED', 'Delivered'),
-                ('CANCELLED', 'Cancelled'),
-              ].map((entry) => _RadioTile(
-                    label: entry.$2,
-                    selected: _status == entry.$1,
-                    onTap: () => setState(() => _status = entry.$1),
-                  )),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              // Apply button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: () {
-                    widget.onApply(_date, _status);
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.appBrand,
-                    foregroundColor: AppColors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                    ),
-                  ),
-                  child: Text(
-                    'Apply Filter',
-                    style: AppTypography.bodyLarge.copyWith(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              SizedBox(height: context.spacing.space4),
+              Text('Filtrer',
+                  style: context.typography.h3.copyWith(color: c.fg1)),
+              SizedBox(height: context.spacing.space4),
+              Text('PÉRIODE',
+                  style: context.typography.label.copyWith(color: c.fg3)),
+              SizedBox(height: context.spacing.space2),
+              for (final (k, label) in _dateOptions)
+                _RadioTile(
+                  label: label,
+                  selected: _date == k,
+                  onTap: () => setState(() => _date = k),
                 ),
+              SizedBox(height: context.spacing.space4),
+              Text('STATUT',
+                  style: context.typography.label.copyWith(color: c.fg3)),
+              SizedBox(height: context.spacing.space2),
+              for (final (k, label) in _statusOptions)
+                _RadioTile(
+                  label: label,
+                  selected: _status == k,
+                  onTap: () => setState(() => _status = k),
+                ),
+              SizedBox(height: context.spacing.space6),
+              _PrimaryCta(
+                label: 'Appliquer',
+                onTap: () {
+                  widget.onApply(_date, _status);
+                  Navigator.pop(context);
+                },
               ),
             ],
           ),
@@ -632,7 +1431,8 @@ class _RadioTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final c = context.colors;
+    return _ScaleTap(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -644,22 +1444,17 @@ class _RadioTile extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: selected
-                      ? context.appBrand
-                      : context.appBorder,
-                  width: selected ? 5 : 1.5,
+                  color: selected ? c.fg1 : c.border2,
+                  width: selected ? 6 : 1.5,
                 ),
               ),
             ),
-            const SizedBox(width: AppSpacing.md),
+            SizedBox(width: context.spacing.space3),
             Text(
               label,
-              style: AppTypography.body.copyWith(
-                color: selected
-                    ? context.appTextPrimary
-                    : context.appTextSecondary,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.w400,
+              style: context.typography.body.copyWith(
+                color: selected ? c.fg1 : c.fg2,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],
@@ -669,361 +1464,107 @@ class _RadioTile extends StatelessWidget {
   }
 }
 
-class _ActivePill extends StatelessWidget {
-  const _ActivePill({required this.label, required this.onRemove});
-  final String label;
-  final VoidCallback onRemove;
+// ════════════════════════════════════════════════════════════
+// F13 — Multi-select action bar (bottom bar while in mode)
+// ════════════════════════════════════════════════════════════
+class _MultiSelectActionBar extends StatelessWidget {
+  const _MultiSelectActionBar({
+    required this.count,
+    required this.onCancel,
+    required this.onActions,
+  });
+  final int count;
+  final VoidCallback onCancel;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: context.appBrandLight,
-        borderRadius: BorderRadius.circular(AppRadius.full),
+    final c = context.colors;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          context.spacing.space4,
+          context.spacing.space3,
+          context.spacing.space4,
+          context.spacing.space3,
+        ),
+        decoration: BoxDecoration(
+          color: c.surface0,
+          border: Border(top: BorderSide(color: c.border1)),
+        ),
+        child: Row(
+          children: [
+            TextButton(
+              onPressed: onCancel,
+              child: Text(
+                'Annuler',
+                style: context.typography.button.copyWith(color: c.fg2),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              count > 1
+                  ? '$count sélectionnées'
+                  : '$count sélectionnée',
+              style: context.typography.bodyMd.copyWith(color: c.fg1),
+            ),
+            SizedBox(width: context.spacing.space3),
+            ElevatedButton.icon(
+              onPressed: count == 0 ? null : onActions,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.fg1,
+                foregroundColor: c.surface0,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                disabledBackgroundColor: c.surface2,
+                disabledForegroundColor: c.fg3,
+              ),
+              icon: const Icon(Icons.more_horiz, size: 16),
+              label: Text(
+                'Actions',
+                style:
+                    context.typography.button.copyWith(color: c.surface0),
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// F12 — Order list flag row
+// ════════════════════════════════════════════════════════════
+class _FlagRow extends StatelessWidget {
+  const _FlagRow({required this.order});
+  final OrderLean order;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = order.visibleFlags;
+    final overflow = order.overflowCount;
+    return SizedBox(
+      height: 22,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: AppTypography.caption.copyWith(
-              color: context.appBrand,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: onRemove,
-            child: Icon(Icons.close_rounded,
-                size: 12, color: context.appBrand),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Order Card ─────────────────────────────────────────────
-class _OrderCard extends ConsumerWidget {
-  const _OrderCard({required this.order, required this.onStatusChanged});
-  final OrderLean order;
-  final VoidCallback onStatusChanged;
-
-  Color _statusColor(String status) => switch (status) {
-        'PENDING' => AppColors.warning,
-        'CONFIRMED' => AppColors.info,
-        'SHIPPED' => const Color(0xFF8B5CF6),
-        'DELIVERED' => AppColors.success,
-        'CANCELLED' => AppColors.error,
-        _ => AppColors.textTertiary,
-      };
-
-  Color _statusBg(String status) => switch (status) {
-        'PENDING' => AppColors.warningBg,
-        'CONFIRMED' => AppColors.infoBg,
-        'SHIPPED' => const Color(0xFFF3F0FF),
-        'DELIVERED' => AppColors.successBg,
-        'CANCELLED' => AppColors.errorBg,
-        _ => AppColors.surfaceL1,
-      };
-
-  String? _nextStatus(String current) => switch (current) {
-        'PENDING' => 'CONFIRMED',
-        'CONFIRMED' => 'SHIPPED',
-        'SHIPPED' => 'DELIVERED',
-        _ => null,
-      };
-
-  Future<void> _quickUpdateStatus(
-      BuildContext context, WidgetRef ref, String newStatus) async {
-    try {
-      await ref
-          .read(orderRepositoryProvider)
-          .updateStatus(order.id, newStatus);
-      onStatusChanged();
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(e.toString()),
-              backgroundColor: AppColors.error),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isCancelled = order.status == 'CANCELLED';
-    final isProfit = order.orderProfit > 0 && !isCancelled;
-    final isLoss = order.orderProfit < 0 && !isCancelled;
-    final next = _nextStatus(order.status);
-
-    return Dismissible(
-      key: Key(order.id),
-      direction: next != null
-          ? DismissDirection.endToStart
-          : DismissDirection.none,
-      confirmDismiss: (_) async {
-        if (next == null) return false;
-        await _quickUpdateStatus(context, ref, next);
-        return false;
-      },
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: AppSpacing.xl),
-        decoration: BoxDecoration(
-          color: context.appBrand,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle_outline_rounded,
-                color: AppColors.white, size: 24),
-            const SizedBox(height: 4),
-            Text(next ?? '',
-                style: AppTypography.label.copyWith(
-                    color: AppColors.white, fontWeight: FontWeight.w600)),
+          for (var i = 0; i < visible.length; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            OrderFlagPill(flag: visible[i]),
           ],
-        ),
-      ),
-      child: GestureDetector(
-        onTap: () => context.push('/orders/${order.id}'),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-          decoration: BoxDecoration(
-            color: context.appSurface,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: context.isDark
-                ? Border.all(color: context.appBorder)
-                : null,
-            boxShadow: context.appCardShadow,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: context.appBrandLight,
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                ),
-                child: Center(
-                  child: Text(
-                    order.customerName[0].toUpperCase(),
-                    style: AppTypography.body.copyWith(
-                      color: context.appBrand,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            order.customerName,
-                            style: AppTypography.body.copyWith(
-                              color: context.appTextPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _statusBg(order.status),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: Text(
-                            order.status,
-                            style: AppTypography.caption.copyWith(
-                              color: _statusColor(order.status),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${order.customerPhone} · ${order.orderNumber}',
-                      style: AppTypography.caption.copyWith(
-                        color: context.appTextTertiary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          MillimesFormatter.format(order.netRevenue),
-                          style: AppTypography.bodySmall.copyWith(
-                            color: context.appTextPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Text(
-                              MillimesFormatter.format(order.orderProfit),
-                              style: AppTypography.bodySmall.copyWith(
-                                color: isCancelled
-                                    ? context.appTextTertiary
-                                    : isProfit
-                                        ? AppColors.success
-                                        : isLoss
-                                            ? AppColors.error
-                                            : context.appTextSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              ' · ${DateFormatter.relative(order.createdAt)}',
-                              style: AppTypography.caption.copyWith(
-                                color: context.appTextTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (next != null) ...[
-                const SizedBox(width: AppSpacing.xs),
-                Icon(Icons.chevron_left_rounded,
-                    size: 16, color: context.appTextTertiary),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Empty / Error / Skeleton ───────────────────────────────
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenHorizontal),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: context.appBrandLight,
-                borderRadius: BorderRadius.circular(AppRadius.full),
-              ),
-              child: Icon(Icons.receipt_long_outlined,
-                  size: 40, color: context.appBrand),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text('No orders yet',
-                style: AppTypography.h3
-                    .copyWith(color: context.appTextPrimary)),
-            const SizedBox(height: AppSpacing.xs),
-            Text('Log your first sale in seconds',
-                style: AppTypography.body
-                    .copyWith(color: context.appTextSecondary),
-                textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.xl),
-            GestureDetector(
-              onTap: () => context.push('/orders/add'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl, vertical: AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: context.appBrand,
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                ),
-                child: Text('+ Log Sale',
-                    style: AppTypography.body.copyWith(
-                        color: AppColors.white,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ),
+          if (overflow > 0) ...[
+            const SizedBox(width: 6),
+            OrderFlagPill.overflow(count: overflow),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.onRetry});
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.wifi_off_rounded,
-              size: 48, color: context.appTextTertiary),
-          const SizedBox(height: AppSpacing.md),
-          Text('Could not load orders',
-              style: AppTypography.h4
-                  .copyWith(color: context.appTextPrimary)),
-          const SizedBox(height: AppSpacing.xl),
-          GestureDetector(
-            onTap: onRetry,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.xl, vertical: AppSpacing.md),
-              decoration: BoxDecoration(
-                color: context.appBrand,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-              child: Text('Try Again',
-                  style: AppTypography.body.copyWith(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w600)),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-}
-
-class _OrderListSkeleton extends StatelessWidget {
-  const _OrderListSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenHorizontal),
-      itemCount: 6,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.xs),
-      itemBuilder: (_, __) => Container(
-        height: 72,
-        decoration: BoxDecoration(
-          color: context.appSurfaceL2,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
       ),
     );
   }

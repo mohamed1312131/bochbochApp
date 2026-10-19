@@ -1,42 +1,65 @@
 abstract class AppException implements Exception {
-  const AppException(this.message);
+  const AppException(this.message, {this.code});
   final String message;
+
+  /// Backend-provided machine code (e.g. `INVALID_CREDENTIALS`,
+  /// `ACCOUNT_LOCKED`). Lets the UI branch on stable identifiers
+  /// instead of fragile string-matching against localized messages.
+  final String? code;
+
   @override
   String toString() => message;
 }
 
 class NetworkException extends AppException {
-  const NetworkException([super.message = 'No internet connection']);
+  const NetworkException([super.message = 'No internet connection'])
+      : super(code: null);
 }
 
 class ServerException extends AppException {
-  const ServerException({required this.statusCode, required String message})
-      : super(message);
+  const ServerException({
+    required this.statusCode,
+    required String message,
+    String? code,
+  }) : super(message, code: code);
   final int statusCode;
 }
 
 class UnauthorizedException extends AppException {
-  const UnauthorizedException([super.message = 'Session expired']);
+  const UnauthorizedException([
+    super.message = 'Session expired',
+    String? code,
+  ]) : super(code: code);
 }
 
 class NotFoundException extends AppException {
-  const NotFoundException([super.message = 'Resource not found']);
+  const NotFoundException([
+    super.message = 'Resource not found',
+    String? code,
+  ]) : super(code: code);
 }
 
 class ValidationException extends AppException {
   const ValidationException({
     required String message,
     this.errors = const {},
-  }) : super(message);
+    String? code,
+  }) : super(message, code: code);
+
+  /// Per-field validation errors from the backend (Zod / Fastify).
+  /// Map of field name → list of messages. Empty when the backend
+  /// didn't return field-level details.
   final Map<String, List<String>> errors;
 }
 
 class CacheException extends AppException {
-  const CacheException([super.message = 'Local data error']);
+  const CacheException([super.message = 'Local data error'])
+      : super(code: null);
 }
 
 class UnknownException extends AppException {
-  const UnknownException([super.message = 'Something went wrong']);
+  const UnknownException([super.message = 'Something went wrong'])
+      : super(code: null);
 }
 
 // ── AI-specific exceptions ───────────────────────────────────────────
@@ -59,13 +82,13 @@ enum AiErrorCode {
 
 class AiException extends AppException {
   const AiException({
-    required this.code,
+    required this.aiCode,
     required String message,
     this.retryAfterMs,
     this.resetAt,
-  }) : super(message);
+  }) : super(message, code: null);
 
-  final AiErrorCode code;
+  final AiErrorCode aiCode;
 
   /// Set on RATE_LIMIT_EXCEEDED and PROVIDER_UNAVAILABLE.
   /// Flutter uses this for countdown timers.
@@ -94,7 +117,7 @@ class AiException extends AppException {
     Map<String, dynamic>? metadata,
   }) {
     return AiException(
-      code: _codeFromString(code),
+      aiCode: _codeFromString(code),
       message: message,
       retryAfterMs: metadata?['retryAfterMs'] as int?,
       resetAt: metadata?['resetAt'] as String?,

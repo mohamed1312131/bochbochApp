@@ -24,7 +24,6 @@ class OnboardingState with _$OnboardingState {
     String? boutiqueCategory,
     String? boutiqueCity,
     String? logoUrl,
-    String? brandColor,
     @Default('TRACKED') String goalKind,
     @Default('REVENUE') String goalType,
     int? goalTargetValue,
@@ -65,7 +64,6 @@ class OnboardingNotifier extends AutoDisposeAsyncNotifier<OnboardingState> {
       boutiqueCategory: draft.boutiqueCategory,
       boutiqueCity: draft.boutiqueCity,
       logoUrl: draft.boutiqueLogoUrl,
-      brandColor: draft.boutiqueBrandColor,
       goalKind: draft.goalKind ?? 'TRACKED',
       goalType: draft.goalType ?? 'REVENUE',
       goalTargetValue: draft.goalTargetValue,
@@ -88,9 +86,6 @@ class OnboardingNotifier extends AutoDisposeAsyncNotifier<OnboardingState> {
       _update((s) => s.copyWith(boutiqueCategory: v, errorMessage: null));
   void setBoutiqueCity(String v) =>
       _update((s) => s.copyWith(boutiqueCity: v, errorMessage: null));
-  void setBrandColor(String? v) =>
-      _update((s) => s.copyWith(brandColor: v, errorMessage: null));
-
   void setGoalKind(String v) =>
       _update((s) => s.copyWith(goalKind: v, errorMessage: null));
   void setGoalType(String v) =>
@@ -108,7 +103,7 @@ class OnboardingNotifier extends AutoDisposeAsyncNotifier<OnboardingState> {
     } catch (e) {
       _update((s) => s.copyWith(
             isUploadingLogo: false,
-            errorMessage: 'Logo upload failed',
+            errorMessage: 'Échec du téléchargement du logo',
           ));
     }
   }
@@ -125,7 +120,6 @@ class OnboardingNotifier extends AutoDisposeAsyncNotifier<OnboardingState> {
         boutiqueCategory: Value(s.boutiqueCategory),
         boutiqueCity: Value(s.boutiqueCity),
         boutiqueLogoUrl: Value(s.logoUrl),
-        boutiqueBrandColor: Value(s.brandColor),
         goalKind: Value(s.goalKind),
         goalType: Value(s.goalType),
         goalLabel: Value(s.goalLabel),
@@ -151,7 +145,6 @@ class OnboardingNotifier extends AutoDisposeAsyncNotifier<OnboardingState> {
           name: s.boutiqueName.trim(),
           category: s.boutiqueCategory,
           city: s.boutiqueCity,
-          brandColor: s.brandColor,
         ),
       );
       ref.invalidate(currentBoutiqueProvider);

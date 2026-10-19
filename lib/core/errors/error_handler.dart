@@ -24,12 +24,16 @@ abstract final class ErrorHandler {
         String message = 'Something went wrong';
         String? code;
         Map<String, dynamic>? metadata;
+        Map<String, List<String>> validationErrors = const {};
 
         if (data is Map<String, dynamic>) {
           final apiError = ApiError.fromJson(data);
           message = apiError.message;
           code = apiError.code;
           metadata = apiError.metadata;
+          if (apiError.errors != null) {
+            validationErrors = apiError.errors!;
+          }
         }
 
         // AI endpoints return structured codes — preserve them.
@@ -42,13 +46,26 @@ abstract final class ErrorHandler {
           );
         }
 
-        // Standard HTTP status mapping for non-AI endpoints.
-        if (statusCode == 401) return UnauthorizedException(message);
-        if (statusCode == 404) return NotFoundException(message);
+        // Standard HTTP status mapping for non-AI endpoints. The
+        // backend `code` field (e.g. `INVALID_CREDENTIALS`,
+        // `ACCOUNT_LOCKED`) is now passed through so callers can
+        // branch on stable identifiers (H2 fix). Field-level errors
+        // from 422 responses are forwarded via ValidationException.errors
+        // (H3 fix — previously dropped to const {}).
+        if (statusCode == 401) return UnauthorizedException(message, code);
+        if (statusCode == 404) return NotFoundException(message, code);
         if (statusCode == 422) {
-          return ValidationException(message: message, errors: const {});
+          return ValidationException(
+            message: message,
+            errors: validationErrors,
+            code: code,
+          );
         }
-        return ServerException(statusCode: statusCode, message: message);
+        return ServerException(
+          statusCode: statusCode,
+          message: message,
+          code: code,
+        );
 
       default:
         return const UnknownException();

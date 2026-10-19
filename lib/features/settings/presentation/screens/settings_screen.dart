@@ -1,21 +1,19 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
+
 import '../../../../core/theme/app_theme_extension.dart';
-import '../../../../core/i18n/l10n_context.dart';
 import '../../../../features/boutiques/presentation/boutique_providers.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
+import '../../../../shared/providers/package_info_provider.dart';
 import '../../../../shared/providers/theme_provider.dart';
 
-// ── User info provider ─────────────────────────────────────
-final _userInfoProvider = FutureProvider.autoDispose<Map<String, String>>((ref) async {
+final _userInfoProvider =
+    FutureProvider.autoDispose<Map<String, String>>((ref) async {
   const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
@@ -31,255 +29,97 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final userInfoAsync = ref.watch(_userInfoProvider);
-    final themeMode = ref.watch(themeModeProvider);
-    final isDark = themeMode == ThemeMode.dark;
+    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // ── Header ───────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenHorizontal,
-                  AppSpacing.xl,
-                  AppSpacing.screenHorizontal,
-                  AppSpacing.xl,
-                ),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => context.pop(),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: context.appSurfaceL2,
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.full),
-                        ),
-                        child: Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          size: 16,
-                          color: context.appTextPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    Text(
-                      'Settings',
-                      style: AppTypography.h2.copyWith(
-                        color: context.appTextPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
+            const SliverToBoxAdapter(child: _Header()),
             SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.space4,
+                0,
+                context.spacing.space4,
+                context.spacing.space6,
               ),
               sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  // ── Profile Card ─────────────────────────
+                delegate: SliverChildListDelegate.fixed([
                   userInfoAsync.when(
-                    loading: () => _SkeletonBox(height: 100),
+                    loading: () => _SkeletonBox(height: 96),
                     error: (_, __) => const SizedBox.shrink(),
-                    data: (info) {
-                      final fullName = info['fullName'] ?? 'User';
-                      final email = info['email'] ?? '';
-                      final tier = info['tier'] ?? 'TRIAL';
-                      final initial = fullName.isNotEmpty
-                          ? fullName[0].toUpperCase()
-                          : 'U';
-
-                      return Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF05687B), Color(0xFF023D49)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(AppRadius.xl),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF05687B)
-                                  .withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                          border: context.isDark ? Border.all(color: context.appBorder) : null,
-                        ),
-                        child: Row(
-                          children: [
-                            // Avatar — boutique logo (or initial-letter fallback)
-                            _BoutiqueAvatar(initial: initial),
-                            const SizedBox(width: AppSpacing.md),
-                            // Info
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    fullName,
-                                    style: AppTypography.h4.copyWith(
-                                      color: AppColors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    email,
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.white
-                                          .withValues(alpha: 0.7),
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppSpacing.xs),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.white
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(
-                                          AppRadius.full),
-                                    ),
-                                    child: Text(
-                                      tier == 'PRO'
-                                          ? '⭐ PRO'
-                                          : '🕐 TRIAL',
-                                      style: AppTypography.label.copyWith(
-                                        color: AppColors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    data: (info) => _IdentityCard(
+                      fullName: info['fullName'] ?? 'User',
+                      email: info['email'] ?? '',
+                      tier: info['tier'] ?? 'TRIAL',
+                    ),
                   ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // ── Boutique ──────────────────────────────
-                  _SectionLabel(label: 'Boutique'),
-                  const SizedBox(height: AppSpacing.xs),
+                  SizedBox(height: context.spacing.space6),
+                  const _SectionLabel('BOUTIQUE'),
                   _SettingsCard(
                     children: [
                       _SettingsRow(
                         icon: Icons.store_outlined,
-                        iconColor: context.appBrand,
                         label: 'Modifier ma boutique',
                         showChevron: true,
                         onTap: () => context.push('/boutiques/edit'),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // ── Preferences ───────────────────────────
-                  _SectionLabel(label: 'Preferences'),
-                  const SizedBox(height: AppSpacing.xs),
-
+                  SizedBox(height: context.spacing.space6),
+                  const _SectionLabel('STOCK'),
                   _SettingsCard(
                     children: [
                       _SettingsRow(
-                        icon: isDark
-                            ? Icons.dark_mode_rounded
-                            : Icons.light_mode_rounded,
-                        iconColor: context.appBrand,
-                        label: 'Dark Mode',
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Stock & alertes',
+                        showChevron: true,
+                        onTap: () => context.push('/settings/stock'),
+                      ),
+                      const _Divider(),
+                      _SettingsRow(
+                        icon: Icons.category_outlined,
+                        label: 'Catégories',
+                        showChevron: true,
+                        onTap: () => context.push('/settings/categories'),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.spacing.space6),
+                  const _SectionLabel('PRÉFÉRENCES'),
+                  _SettingsCard(
+                    children: [
+                      _SettingsRow(
+                        icon: Icons.dark_mode_outlined,
+                        label: 'Mode sombre',
                         trailing: CupertinoSwitch(
                           value: isDark,
-                          activeTrackColor: context.appBrand,
-                          onChanged: (_) =>
-                              ref.read(themeModeProvider.notifier).toggle(),
+                          activeTrackColor: c.fg1,
+                          onChanged: (_) => ref
+                              .read(themeModeProvider.notifier)
+                              .toggle(),
                         ),
-                      ),
-                      _Divider(),
-                      // Language picker — only French active in v1; Arabic/English greyed.
-                      // Activation in v1.x by adding ARB files + persisting choice.
-                      _SettingsRow(
-                        icon: Icons.language_rounded,
-                        iconColor: AppColors.info,
-                        label: 'Language',
-                        trailing: Text(
-                          context.l10n.settingsLanguageFrench,
-                          style: AppTypography.body.copyWith(
-                            color: context.appTextSecondary,
-                          ),
-                        ),
-                        showChevron: true,
-                        onTap: () => _showLanguagePicker(context),
+                        onTap: () => ref
+                            .read(themeModeProvider.notifier)
+                            .toggle(),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // TODO Phase 3: wire notification preferences (replace this placeholder)
-
-                  // ── Account ───────────────────────────────
-                  _SectionLabel(label: 'Account'),
-                  const SizedBox(height: AppSpacing.xs),
-
-                  _SettingsCard(
-                    children: [
-                      // TODO Phase 12: wire Privacy Policy page
-                      _SettingsRow(
-                        icon: Icons.shield_outlined,
-                        iconColor: AppColors.success,
-                        label: 'Privacy Policy',
-                        showChevron: true,
-                        onTap: () => _showComingSoon(context),
-                      ),
-                      _Divider(),
-                      // TODO Phase 12: wire Terms of Service page
-                      _SettingsRow(
-                        icon: Icons.description_outlined,
-                        iconColor: AppColors.info,
-                        label: 'Terms of Service',
-                        showChevron: true,
-                        onTap: () => _showComingSoon(context),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // ── Logout ────────────────────────────────
-                  _SettingsCard(
-                    children: [
-                      const _LogoutRow(),
-                    ],
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // Version
-                  Center(
-                    child: Text(
-                      'DIDO v1.0.0',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
+                  // Privacy + Terms rows hidden until hosted URLs are
+                  // wired (H22). Replace this comment with a
+                  // _SettingsCard containing the two rows once
+                  // PRIVACY_URL / TERMS_URL are added to dart_defines
+                  // and a url_launcher dep is wired up. Shipping
+                  // "Bientôt disponible" snackbars is a fast track to
+                  // app-store rejection.
+                  SizedBox(height: context.spacing.space6),
+                  const _SettingsCard(children: [_LogoutRow()]),
+                  SizedBox(height: context.spacing.space6),
+                  const _VersionString(),
+                  SizedBox(height: context.spacing.space6),
                 ]),
               ),
             ),
@@ -290,103 +130,203 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-void _showComingSoon(BuildContext context) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text('Bientôt disponible')),
-  );
-}
+// ════════════════════════════════════════════════════════════
+// Header
+// ════════════════════════════════════════════════════════════
+class _Header extends StatelessWidget {
+  const _Header();
 
-void _showLanguagePicker(BuildContext context) {
-  final l10n = context.l10n;
-  showModalBottomSheet<void>(
-    context: context,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space4,
+        context.spacing.space3,
+        context.spacing.space4,
+        context.spacing.space3,
+      ),
+      child: Row(
         children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2),
+          _ScaleTap(
+            pressedScale: 0.92,
+            onTap: () => context.pop(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: c.surface2,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 16, color: c.fg1),
             ),
           ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              l10n.settingsLanguageTitle,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
+          SizedBox(width: context.spacing.space3),
+          Text(
+            'Réglages',
+            style: context.typography.h1.copyWith(color: c.fg1),
           ),
-          const SizedBox(height: 12),
-          // French — active
-          ListTile(
-            leading: Icon(Icons.check_circle, color: context.appBrand),
-            title: Text(l10n.settingsLanguageFrench),
-            onTap: () => Navigator.of(sheetContext).pop(),
-          ),
-          // Arabic — coming soon
-          ListTile(
-            enabled: false,
-            leading: const Icon(Icons.lock_outline, color: Colors.grey),
-            title: Text(
-              l10n.settingsLanguageArabic,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            trailing: Text(
-              l10n.settingsComingSoon,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              _showComingSoon(context);
-            },
-          ),
-          // English — coming soon
-          ListTile(
-            enabled: false,
-            leading: const Icon(Icons.lock_outline, color: Colors.grey),
-            title: Text(
-              l10n.settingsLanguageEnglish,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            trailing: Text(
-              l10n.settingsComingSoon,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              _showComingSoon(context);
-            },
-          ),
-          const SizedBox(height: 16),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
 
-// ── Reusable components ────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// Identity card
+// ════════════════════════════════════════════════════════════
+class _IdentityCard extends StatelessWidget {
+  const _IdentityCard({
+    required this.fullName,
+    required this.email,
+    required this.tier,
+  });
 
+  final String fullName;
+  final String email;
+  final String tier;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: EdgeInsets.all(context.spacing.space4),
+      decoration: BoxDecoration(
+        color: c.surface1,
+        border: Border.all(color: c.border1),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
+      ),
+      child: Row(
+        children: [
+          _BoutiqueAvatar(initial: _initialOf(fullName)),
+          SizedBox(width: context.spacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  fullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.typography.h4.copyWith(color: c.fg1),
+                ),
+                if (email.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.bodySmall
+                        .copyWith(color: c.fg3),
+                  ),
+                ],
+                SizedBox(height: context.spacing.space2),
+                _TierChip(tier: tier),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _initialOf(String name) =>
+      name.isNotEmpty ? name[0].toUpperCase() : 'U';
+}
+
+class _TierChip extends StatelessWidget {
+  const _TierChip({required this.tier});
+  final String tier;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(context.radius.radiusChip),
+      ),
+      child: Text(
+        tier == 'PRO' ? 'Pro' : 'Essai',
+        style: context.typography.tabPill.copyWith(
+          color: c.fg2,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _BoutiqueAvatar extends ConsumerWidget {
+  const _BoutiqueAvatar({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final boutique = ref.watch(currentBoutiqueProvider).valueOrNull;
+    final logoUrl = boutique?.logoUrl;
+
+    final fallback = Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: c.brandTeal,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: context.typography.h2.copyWith(
+          color: c.surface0,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+
+    if (logoUrl == null || logoUrl.isEmpty) return fallback;
+
+    return ClipOval(
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: CachedNetworkImage(
+          imageUrl: logoUrl,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => fallback,
+          errorWidget: (_, __, ___) => fallback,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Section label + card + row
+// ════════════════════════════════════════════════════════════
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.label});
+  const _SectionLabel(this.label);
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: AppSpacing.xs),
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.space2,
+        0,
+        context.spacing.space2,
+        context.spacing.space2,
+      ),
       child: Text(
         label.toUpperCase(),
-        style: AppTypography.label.copyWith(
-          color: AppColors.textTertiary,
-          letterSpacing: 1.0,
+        style: context.typography.label.copyWith(
+          color: context.colors.fg3,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -399,13 +339,14 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       decoration: BoxDecoration(
-        color: context.appSurface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: context.appCardShadow,
-        border: context.isDark ? Border.all(color: context.appBorder) : null,
+        color: c.surface1,
+        border: Border.all(color: c.border1),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }
@@ -415,7 +356,6 @@ class _SettingsRow extends StatelessWidget {
   const _SettingsRow({
     required this.icon,
     required this.label,
-    this.iconColor = AppColors.brand,
     this.trailing,
     this.showChevron = false,
     this.onTap,
@@ -423,20 +363,19 @@ class _SettingsRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final Color iconColor;
   final Widget? trailing;
   final bool showChevron;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final c = context.colors;
+    return _ScaleTap(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
         ),
         child: Row(
           children: [
@@ -444,29 +383,27 @@ class _SettingsRow extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
+                color: c.surface2,
+                borderRadius:
+                    BorderRadius.circular(context.radius.radiusInput),
               ),
-              child: Icon(icon, size: 18, color: iconColor),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 18, color: c.fg2),
             ),
-            const SizedBox(width: AppSpacing.md),
+            SizedBox(width: context.spacing.space3),
             Expanded(
               child: Text(
                 label,
-                style: AppTypography.body.copyWith(
-                  color: context.appTextPrimary,
-                ),
+                style: context.typography.bodyMd.copyWith(color: c.fg1),
               ),
             ),
-            if (trailing != null) trailing!,
-            if (showChevron) ...[
-              const SizedBox(width: AppSpacing.xs),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: context.appTextTertiary,
-              ),
+            if (trailing != null) ...[
+              trailing!,
+              SizedBox(width: context.spacing.space2),
             ],
+            if (showChevron)
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: c.fg3),
           ],
         ),
       ),
@@ -475,68 +412,67 @@ class _SettingsRow extends StatelessWidget {
 }
 
 class _Divider extends StatelessWidget {
+  const _Divider();
+
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 68),
-      child: Divider(height: 1, color: AppColors.border),
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.only(left: 68),
+      color: context.colors.border1,
     );
   }
 }
 
+// ════════════════════════════════════════════════════════════
+// Logout
+// ════════════════════════════════════════════════════════════
 class _LogoutRow extends ConsumerWidget {
   const _LogoutRow();
 
+  Future<void> _confirm(BuildContext context, WidgetRef ref) async {
+    final c = context.colors;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Voulez-vous vraiment vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Annuler',
+              style:
+                  context.typography.bodyMd.copyWith(color: c.fg2),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Déconnexion',
+              style: context.typography.bodyMd.copyWith(
+                color: c.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !context.mounted) return;
+    await ref.read(authStateProvider.notifier).logout();
+    if (context.mounted) context.go('/auth/login');
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () async {
-        final confirm = await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-            ),
-            title: Text('Logout', style: AppTypography.h4),
-            content: Text(
-              'Are you sure you want to logout?',
-              style: AppTypography.body.copyWith(
-                color: context.appTextSecondary,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'Cancel',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextSecondary,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(
-                  'Logout',
-                  style: AppTypography.body.copyWith(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-        if (confirm == true && context.mounted) {
-          await ref.read(authStateProvider.notifier).logout();
-          if (context.mounted) context.go('/auth/login');
-        }
-      },
-      behavior: HitTestBehavior.opaque,
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () => _confirm(context, ref),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
         ),
         child: Row(
           children: [
@@ -544,24 +480,49 @@ class _LogoutRow extends ConsumerWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: AppColors.errorBg,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
+                color: c.coralTint12,
+                borderRadius:
+                    BorderRadius.circular(context.radius.radiusInput),
               ),
-              child: const Icon(
-                Icons.logout_rounded,
-                size: 18,
-                color: AppColors.error,
-              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.logout_rounded,
+                  size: 18, color: c.coralFg),
             ),
-            const SizedBox(width: AppSpacing.md),
+            SizedBox(width: context.spacing.space3),
             Text(
-              'Logout',
-              style: AppTypography.body.copyWith(
-                color: AppColors.error,
+              'Déconnexion',
+              style: context.typography.bodyMd.copyWith(
+                color: c.coralFg,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Version + skeleton
+// ════════════════════════════════════════════════════════════
+class _VersionString extends ConsumerWidget {
+  const _VersionString();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final info = ref.watch(packageInfoProvider);
+    return Center(
+      child: info.when(
+        loading: () => const SizedBox(height: 18),
+        error: (_, __) => Text(
+          'DIDO',
+          style: context.typography.bodySmall.copyWith(color: c.fg3),
+        ),
+        data: (pkg) => Text(
+          'DIDO v${pkg.version}',
+          style: context.typography.bodySmall.copyWith(color: c.fg3),
         ),
       ),
     );
@@ -574,72 +535,62 @@ class _SkeletonBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.surfaceL1,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
       ),
     );
   }
 }
-class _BoutiqueAvatar extends ConsumerWidget {
-  const _BoutiqueAvatar({required this.initial});
-  final String initial;
+
+// ════════════════════════════════════════════════════════════
+// Tap feedback (TODO(extract))
+// ════════════════════════════════════════════════════════════
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.98,
+  });
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final boutique = ref.watch(currentBoutiqueProvider).valueOrNull;
-    final logoUrl = boutique?.logoUrl;
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
 
-    final fallback = Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        color: context.appSurface.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(
-          color: context.appSurface.withValues(alpha: 0.3),
-          width: 2,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          initial,
-          style: AppTypography.h2.copyWith(color: AppColors.white),
-        ),
-      ),
-    );
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
 
-    if (logoUrl == null || logoUrl.isEmpty) return fallback;
-
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(
-          color: context.appSurface.withValues(alpha: 0.3),
-          width: 2,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        child: CachedNetworkImage(
-          imageUrl: logoUrl,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.white,
-              ),
-            ),
-          ),
-          errorWidget: (_, __, ___) => fallback,
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.onTap == null
+          ? null
+          : (_) {
+              _set(true);
+              HapticFeedback.lightImpact();
+            },
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _set(false);
+              widget.onTap!();
+            },
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        child: widget.child,
       ),
     );
   }

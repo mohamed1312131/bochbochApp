@@ -1,5 +1,14 @@
 abstract final class ApiEndpoints {
-  static const String baseUrl = 'http://localhost:3000/api/v1';
+  /// API base URL — set per-flavor via `--dart-define=API_BASE_URL=...`
+  /// or `--dart-define-from-file=dart_defines/<flavor>.json`.
+  ///
+  /// Defaults to `http://localhost:3000/api/v1` for local development.
+  /// Production builds MUST pass an HTTPS URL (release builds will
+  /// otherwise leak tokens over plain HTTP).
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:3000/api/v1',
+  );
 
   // ── Auth ────────────────────────────────────────────────
   static const String login = '/auth/login';
@@ -32,42 +41,36 @@ abstract final class ApiEndpoints {
   static String orderReturn(String orderId, String returnId) =>
       '/orders/$orderId/returns/$returnId';
   static String orderInvoice(String id) => '/orders/$id/invoice';
+  static String orderExchanges(String id) => '/orders/$id/exchanges';
+  static String orderIssues(String id) => '/orders/$id/issues';
+  static String orderRto(String id) => '/orders/$id/rto';
+  static String orderPartialFulfill(String id) =>
+      '/orders/$id/partial-fulfill';
+  static const String ordersBulkStatus = '/orders/bulk/status';
+  static const String ordersBulkCancel = '/orders/bulk/cancel';
 
   // ── Customers ───────────────────────────────────────────
   static const String customers = '/customers';
   static String customer(String id) => '/customers/$id';
   static String customerOrders(String id) => '/customers/$id/orders';
   static String customerStats(String id) => '/customers/$id/stats';
+  static String customerToggles(String id) => '/customers/$id/toggles';
+  static String customerProfile(String id) => '/customers/$id/profile';
+  static String customerRisk(String id) => '/customers/$id/risk';
+  static String customerNotes(String id) => '/customers/$id/notes';
+  static String customerNote(String customerId, String noteId) =>
+      '/customers/$customerId/notes/$noteId';
+  static String customerAddresses(String id) => '/customers/$id/addresses';
+  static String customerAddress(String customerId, String addrId) =>
+      '/customers/$customerId/addresses/$addrId';
+  static String customerAddressDefault(String customerId, String addrId) =>
+      '/customers/$customerId/addresses/$addrId/default';
 
   // ── Dashboard & Profit ──────────────────────────────────
   static const String dashboard = '/dashboard';
   static const String profitSummary = '/profit/summary';
   static const String profitByProduct = '/profit/by-product';
   static const String profitTrend = '/profit/trend';
-
-  // ── AI Studio ───────────────────────────────────────────
-  // Session lifecycle
-  static const String aiSessions = '/ai/sessions';
-  static String aiSession(String id) => '/ai/sessions/$id';
-  static String aiSessionAbandon(String id) => '/ai/sessions/$id/abandon';
-
-  // Photos (multipart upload per photo)
-  static String aiSessionPhotos(String sessionId) =>
-      '/ai/sessions/$sessionId/photos';
-
-  // Analysis (Gemini — quota gated)
-  static String aiSessionAnalyze(String sessionId) =>
-      '/ai/sessions/$sessionId/analyze';
-
-  // Captions (Gemini — quota gated, requires prior analyze)
-  static String aiSessionCaptions(String sessionId) =>
-      '/ai/sessions/$sessionId/captions';
-
-  // Future: enhance, whatsapp, ad-creative
-
-  // Mark a generation as used (moves assets from temp → permanent)
-  static String aiGenerationUsed(String generationId) =>
-      '/ai/generations/$generationId/used';
 
   // ── Notifications ────────────────────────────────────────
   static const String notifications = '/notifications';

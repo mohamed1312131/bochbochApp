@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:icons_plus/icons_plus.dart';
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/constants/app_typography.dart';
+
 import '../../../../core/theme/app_theme_extension.dart';
 
 class GoogleSignInButton extends StatelessWidget {
@@ -11,24 +10,26 @@ class GoogleSignInButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 48,
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Brand(Brands.google, size: 20),
         label: Text(
           'Continuer avec Google',
-          style: AppTypography.bodyLarge.copyWith(
-            color: context.appBrand,
+          style: context.typography.button.copyWith(
+            color: c.fg1,
             fontWeight: FontWeight.w600,
           ),
         ),
         style: OutlinedButton.styleFrom(
-          backgroundColor: context.appSurface,
-          side: BorderSide(color: context.appBorder),
+          backgroundColor: c.surface1,
+          side: BorderSide(color: c.border1, width: 1),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderRadius:
+                BorderRadius.circular(context.radius.radiusInput),
           ),
         ),
       ),

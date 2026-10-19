@@ -1,38 +1,41 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
+
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
-import '../providers/product_provider.dart';
+import '../../../../shared/providers/user_name_provider.dart';
+import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_filter_chip.dart';
+import '../../../../shared/widgets/stock_chip.dart';
 import '../../domain/product_models.dart';
+import '../providers/product_provider.dart';
 
-// ── User name provider ─────────────────────────────────────
-final _productScreenUserProvider = FutureProvider.autoDispose<Map<String, String>>((ref) async {
-  const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  return {
-    'name': await storage.read(key: 'user_full_name') ?? '',
-  };
-});
+enum ProductListFilter { all, lowStock, outOfStock }
+
+// TODO(home): wire to real data — boutique provider
+const _mockBoutiqueName = 'Boutique Sania';
+const _mockBoutiqueInitial = 'S';
+
+// TODO(notifs): wire to real data — notifications provider
+const _mockHasUnreadNotifs = true;
 
 class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
 
   @override
-  ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
+  ConsumerState<ProductListScreen> createState() =>
+      _ProductListScreenState();
 }
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
-  String _searchQuery = '';
+  String _query = '';
+  ProductListFilter _filter = ProductListFilter.all;
 
   @override
   void initState() {
@@ -54,232 +57,141 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     }
   }
 
-  String _greeting() {
-    final hour = DateTime.now().toUtc().add(const Duration(hours: 1)).hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
-
   @override
-  Widget build(BuildContext context, ) {
+  Widget build(BuildContext context) {
+    final c = context.colors;
     final productsAsync = ref.watch(productListProvider);
-    final userAsync = ref.watch(_productScreenUserProvider);
-    final firstName = userAsync.maybeWhen(
-      data: (info) => info['name']?.split(' ').first ?? '',
-      orElse: () => '',
+    final userAsync = ref.watch(userNameProvider);
+    final userInitial = userAsync.maybeWhen(
+      data: (name) => name.isNotEmpty ? name[0].toUpperCase() : 'M',
+      orElse: () => 'M',
     );
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ───────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal,
-                AppSpacing.xl,
-                AppSpacing.screenHorizontal,
-                AppSpacing.md,
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                context.spacing.space4,
+                context.spacing.screenEdge,
+                context.spacing.space2,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_greeting()} 👋',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: context.appTextSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Products',
-                        style: AppTypography.h1.copyWith(
-                          color: context.appTextPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      // Add button
-                      GestureDetector(
-                        onTap: () => context.push('/products/add'),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: context.appBrand,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: const Icon(
-                            Icons.add_rounded,
-                            color: AppColors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      // Profile avatar
-                      GestureDetector(
-                        onTap: () => context.push('/settings'),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: context.appBrandLight,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                            border: Border.all(
-                              color: context.appBrand.withValues(alpha: 0.2),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              firstName.isNotEmpty
-                                  ? firstName[0].toUpperCase()
-                                  : 'U',
-                              style: AppTypography.h4.copyWith(
-                                color: context.appBrand,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  const _BoutiqueChip(),
+                  _UserAvatar(initial: userInitial),
                 ],
               ),
             ),
-
-            // ── Search Bar ────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.screenEdge,
+                vertical: context.spacing.space3,
               ),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: context.appSurface,
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border: Border.all(color: context.appBorder),
-                  boxShadow: context.appCardShadow,
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Search products...',
-                    hintStyle: AppTypography.body.copyWith(
-                      color: context.appTextTertiary,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: context.appTextTertiary,
-                      size: 20,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                    ),
-                  ),
-                  onChanged: (value) {
-                    setState(() => _searchQuery = value.toLowerCase());
-                  },
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Produits',
+                  style: context.typography.h1.copyWith(color: c.fg1),
                 ),
               ),
             ),
-
-            const SizedBox(height: AppSpacing.md),
-
-            // ── Content ───────────────────────────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                0,
+                context.spacing.screenEdge,
+                context.spacing.space3,
+              ),
+              child: _SearchInput(
+                controller: _searchController,
+                hint: 'Nom, catégorie…',
+                onChanged: (v) => setState(() => _query = v.toLowerCase()),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                0,
+                context.spacing.screenEdge,
+                context.spacing.space2,
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    DidoFilterChip(
+                      label: 'Toutes',
+                      selected: _filter == ProductListFilter.all,
+                      onTap: () => setState(
+                          () => _filter = ProductListFilter.all),
+                    ),
+                    const SizedBox(width: 8),
+                    DidoFilterChip(
+                      label: 'Bientôt en rupture',
+                      selected: _filter == ProductListFilter.lowStock,
+                      onTap: () => setState(
+                          () => _filter = ProductListFilter.lowStock),
+                    ),
+                    const SizedBox(width: 8),
+                    DidoFilterChip(
+                      label: 'En rupture',
+                      selected: _filter == ProductListFilter.outOfStock,
+                      onTap: () => setState(
+                          () => _filter = ProductListFilter.outOfStock),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             Expanded(
               child: productsAsync.when(
                 loading: () => const _ProductGridSkeleton(),
-                error: (e, _) => _ErrorState(
+                error: (_, __) => _ErrorState(
                   onRetry: () =>
                       ref.read(productListProvider.notifier).refresh(),
                 ),
                 data: (products) {
-                  // Client-side search filter
-                  final filtered = _searchQuery.isEmpty
-                      ? products
-                      : products
-                          .where((p) =>
-                              p.name
-                                  .toLowerCase()
-                                  .contains(_searchQuery) ||
-                              (p.category
-                                      ?.toLowerCase()
-                                      .contains(_searchQuery) ??
-                                  false))
-                          .toList();
-
-                  if (products.isEmpty) return _EmptyState();
-
+                  if (products.isEmpty) return const _EmptyState();
+                  final filtered = _applyFilters(products);
                   if (filtered.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off_rounded,
-                            size: 48,
-                            color: context.appTextTertiary,
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          Text(
-                            'No products found',
-                            style: AppTypography.h4.copyWith(
-                              color: context.appTextPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.xs),
-                          Text(
-                            'Try a different search term',
-                            style: AppTypography.body.copyWith(
-                              color: context.appTextSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
+                    return _NoSearchResults(query: _query);
                   }
-
                   return RefreshIndicator(
-                    color: context.appBrand,
+                    color: c.fg1,
                     onRefresh: () =>
                         ref.read(productListProvider.notifier).refresh(),
-                    child: GridView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenHorizontal,
-                        0,
-                        AppSpacing.screenHorizontal,
-                        100,
-                      ),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: AppSpacing.cardGap,
-                        crossAxisSpacing: AppSpacing.cardGap,
-                        childAspectRatio: 0.72,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        return _ProductCard(product: filtered[index]);
-                      },
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            context.spacing.screenEdge,
+                            context.spacing.space2,
+                            context.spacing.screenEdge,
+                            context.spacing.space3,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'CATALOGUE · ${filtered.length} ${filtered.length == 1 ? 'ARTICLE' : 'ARTICLES'}',
+                              style: context.typography.label.copyWith(
+                                color: c.fg3,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: _ProductGrid(
+                            products: filtered,
+                            scrollController: _scrollController,
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -288,408 +200,586 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           ],
         ),
       ),
+      floatingActionButton: const _Fab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+
+  List<ProductLean> _applyFilters(List<ProductLean> products) {
+    Iterable<ProductLean> result = products;
+    if (_query.isNotEmpty) {
+      result = result.where((p) =>
+          p.name.toLowerCase().contains(_query) ||
+          (p.category?.toLowerCase().contains(_query) ?? false));
+    }
+    switch (_filter) {
+      case ProductListFilter.all:
+        break;
+      case ProductListFilter.lowStock:
+        result = result.where((p) => p.hasLowStock && p.totalStock > 0);
+        break;
+      case ProductListFilter.outOfStock:
+        result = result.where((p) => p.totalStock <= 0);
+        break;
+    }
+    return result.toList();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Header pieces (duplicated — TODO(extract))
+// ════════════════════════════════════════════════════════════
+class _BoutiqueChip extends StatelessWidget {
+  const _BoutiqueChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () {
+        // TODO(home): open boutique switcher bottom sheet
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: c.surface1,
+          border: Border.all(color: c.border1),
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: c.brandTeal,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _mockBoutiqueInitial,
+                style: context.typography.label.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.surface0,
+                ),
+              ),
+            ),
+            SizedBox(width: context.spacing.space2),
+            Text(
+              _mockBoutiqueName,
+              style: context.typography.bodyMd.copyWith(color: c.fg1),
+            ),
+            SizedBox(width: context.spacing.space1),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: c.fg3),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ── Product Card ───────────────────────────────────────────
-class _ProductCard extends ConsumerWidget {
+class _UserAvatar extends StatelessWidget {
+  const _UserAvatar({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () => context.push('/settings'),
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.brandTealTint08,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: context.typography.bodySmallMd.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.brandTeal,
+                ),
+              ),
+            ),
+            if (_mockHasUnreadNotifs)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: c.coral,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.surface0, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Search input (§3.8)
+// ════════════════════════════════════════════════════════════
+class _SearchInput extends StatelessWidget {
+  const _SearchInput({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: context.typography.input.copyWith(color: c.fg1),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: context.typography.input.copyWith(color: c.fg3),
+          prefixIcon: Icon(Icons.search_rounded, color: c.fg3, size: 20),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Product grid (YSL-inspired — no card wrapper)
+// ════════════════════════════════════════════════════════════
+class _ProductGrid extends StatelessWidget {
+  const _ProductGrid({
+    required this.products,
+    required this.scrollController,
+  });
+
+  final List<ProductLean> products;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      controller: scrollController,
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.screenEdge,
+        0,
+        context.spacing.screenEdge,
+        100,
+      ),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: context.spacing.space6,
+        crossAxisSpacing: context.spacing.space3,
+        childAspectRatio: 0.72,
+      ),
+      itemCount: products.length,
+      itemBuilder: (_, i) => _ProductCard(product: products[i]),
+    );
+  }
+}
+
+class _ProductCard extends StatelessWidget {
   const _ProductCard({required this.product});
   final ProductLean product;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isOutOfStock = product.totalStock == 0;
-final isLowStock = product.totalStock <= 5 && !isOutOfStock;
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final profit = product.profitMargin;
+    final showStockBadge = product.totalStock <= 5;
 
-    return GestureDetector(
+    return _ScaleTap(
       onTap: () => context.push('/products/${product.id}'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.appSurface,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: context.isDark
-              ? Border.all(color: context.appBorder)
-              : null,
-          boxShadow: context.appCardShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Image ──────────────────────────────────
-            Expanded(
-              flex: 5,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(AppRadius.lg),
-                  topRight: Radius.circular(AppRadius.lg),
-                ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Product image
-                    product.primaryImageUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: product.primaryImageUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(
-                              color: context.appSurfaceL2,
-                              child: Icon(
-                                Icons.image_outlined,
-                                color: context.appTextTertiary,
-                                size: 32,
-                              ),
-                            ),
-                            errorWidget: (_, __, ___) => Container(
-                              color: context.appSurfaceL2,
-                              child: Icon(
-                                Icons.inventory_2_outlined,
-                                color: context.appTextTertiary,
-                                size: 32,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: context.appSurfaceL2,
-                            child: Icon(
-                              Icons.inventory_2_outlined,
-                              color: context.appTextTertiary,
-                              size: 32,
-                            ),
-                          ),
-
-                    // Gradient overlay at bottom of image
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 40,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black38,
-                              Colors.transparent,
-                            ],
-                          ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: c.surface2,
+                borderRadius:
+                    BorderRadius.circular(context.radius.radiusCard),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (product.primaryImageUrl != null)
+                    CachedNetworkImage(
+                      imageUrl: product.primaryImageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => const SizedBox.shrink(),
+                      errorWidget: (_, __, ___) => Center(
+                        child: Icon(
+                          Icons.inventory_2_outlined,
+                          size: 32,
+                          color: c.fg3,
                         ),
                       ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.inventory_2_outlined,
+                        size: 32,
+                        color: c.fg3,
+                      ),
                     ),
-
-                    // Stock badge — top right
+                  if (showStockBadge)
                     Positioned(
                       top: 8,
                       right: 8,
-                      child: _StockBadge(
+                      child: StockChip(
                         stock: product.totalStock,
-                        isLowStock: isLowStock,
-                        isOutOfStock: isOutOfStock,
+                        compact: true,
                       ),
                     ),
-
-                    // Variants badge — top left
-                    if (product.isMultiVariant)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: Text(
-                            'Variants',
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                ],
               ),
             ),
-
-            // ── Info ───────────────────────────────────
-            Expanded(
-              flex: 3,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.sm,
-                  AppSpacing.xs,
-                  AppSpacing.sm,
-                  AppSpacing.xs,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Name
-                    Text(
-                      product.name,
-                      style: AppTypography.label.copyWith(
-                        color: context.appTextPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // Category pill
-                    if (product.category != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.appBrandLight,
-                          borderRadius: BorderRadius.circular(AppRadius.full),
-                        ),
-                        child: Text(
-                          product.category!,
-                          style: AppTypography.caption.copyWith(
-                            color: context.appBrand,
-                          ),
-                        ),
-                      ),
-                    // Price + profit row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          MillimesFormatter.format(product.baseSellPrice),
-                          style: AppTypography.bodySmall.copyWith(
-                            color: context.appBrand,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.successBg,
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: Text(
-                            '+${MillimesFormatter.format(product.baseSellPrice - product.baseCostPrice)}',
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.success,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Stock Badge ────────────────────────────────────────────
-class _StockBadge extends StatelessWidget {
-  const _StockBadge({
-    required this.stock,
-    required this.isLowStock,
-    required this.isOutOfStock,
-  });
-
-  final int stock;
-  final bool isLowStock;
-  final bool isOutOfStock;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    String label;
-
-    if (isOutOfStock) {
-      bg = AppColors.error;
-      label = 'Out';
-    } else if (isLowStock) {
-      bg = AppColors.warning;
-      label = '$stock left';
-    } else {
-      bg = AppColors.success;
-      label = '$stock';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption.copyWith(
-          color: AppColors.white,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Empty State ────────────────────────────────────────────
-class _EmptyState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenHorizontal),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: context.appBrandLight,
-                borderRadius: BorderRadius.circular(AppRadius.full),
-              ),
-              child: Icon(
-                Icons.inventory_2_outlined,
-                size: 40,
-                color: context.appBrand,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              'Add your first product',
-              style: AppTypography.h3.copyWith(
-                color: context.appTextPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'Your catalog lives here',
-              style: AppTypography.body.copyWith(
-                color: context.appTextSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            GestureDetector(
-              onTap: () => context.push('/products/add'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.xl,
-                  vertical: AppSpacing.md,
-                ),
-                decoration: BoxDecoration(
-                  color: context.appBrand,
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                ),
-                child: Text(
-                  '+ Add Product',
-                  style: AppTypography.body.copyWith(
-                    color: AppColors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Error State ────────────────────────────────────────────
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.onRetry});
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.wifi_off_rounded,
-            size: 48,
-            color: context.appTextTertiary,
           ),
-          const SizedBox(height: AppSpacing.md),
+          SizedBox(height: context.spacing.space2),
           Text(
-            'Could not load products',
-            style: AppTypography.h4.copyWith(
-              color: context.appTextPrimary,
-            ),
+            product.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.typography.h4.copyWith(color: c.fg1),
           ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Check your connection and try again',
-            style: AppTypography.body.copyWith(
-              color: context.appTextSecondary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          GestureDetector(
-            onTap: onRetry,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl,
-                vertical: AppSpacing.md,
-              ),
-              decoration: BoxDecoration(
-                color: context.appBrand,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-              child: Text(
-                'Try Again',
-                style: AppTypography.body.copyWith(
-                  color: AppColors.white,
+          SizedBox(height: context.spacing.space1),
+          Row(
+            children: [
+              Text(
+                MillimesFormatter.format(product.baseSellPrice),
+                style: context.typography.bodyMd.copyWith(
+                  color: c.fg1,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
+              SizedBox(width: context.spacing.space2),
+              if (profit > 0)
+                Text(
+                  '+${MillimesFormatter.format(profit)}',
+                  style: context.typography.bodySmall.copyWith(
+                    color: c.greenFg,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
           ),
+          if (product.totalStock <= 0) ...[
+            SizedBox(height: context.spacing.space1),
+            _InlineStockBadge(
+              label: 'Rupture',
+              bg: c.coralTint12,
+              fg: c.redFg,
+            ),
+          ] else if (product.hasLowStock) ...[
+            SizedBox(height: context.spacing.space1),
+            _InlineStockBadge(
+              label: 'Bientôt en rupture',
+              bg: c.coralTint12,
+              fg: c.coralFg,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ── Skeleton ───────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// Empty / error / no-search-result / skeleton
+// ════════════════════════════════════════════════════════════
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Aucun produit',
+              style: context.typography.h3.copyWith(color: c.fg2),
+            ),
+            SizedBox(height: context.spacing.space1),
+            Text(
+              'Ajoute ton premier produit pour commencer.',
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+            SizedBox(height: context.spacing.space4),
+            DidoButton.primary(
+              label: 'Ajouter un produit',
+              onPressed: () => context.push('/products/add'),
+              fullWidth: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({required this.query});
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 32, color: c.fg3),
+            SizedBox(height: context.spacing.space2),
+            Text(
+              'Aucun résultat pour « $query »',
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Impossible de charger les produits',
+              textAlign: TextAlign.center,
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+            SizedBox(height: context.spacing.space4),
+            DidoButton.secondary(
+              label: 'Réessayer',
+              onPressed: onRetry,
+              fullWidth: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductGridSkeleton extends StatelessWidget {
   const _ProductGridSkeleton();
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GridView.builder(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal,
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.screenEdge,
+        context.spacing.space6,
+        context.spacing.screenEdge,
+        100,
       ),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: AppSpacing.cardGap,
-        crossAxisSpacing: AppSpacing.cardGap,
+        mainAxisSpacing: context.spacing.space6,
+        crossAxisSpacing: context.spacing.space3,
         childAspectRatio: 0.72,
       ),
       itemCount: 6,
-      itemBuilder: (_, __) => Container(
+      itemBuilder: (_, __) {
+        Widget bar({required double w, required double h}) {
+          return Container(
+            width: w,
+            height: h,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                duration: const Duration(milliseconds: 1500),
+                color: c.surface3,
+              );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: c.surface2,
+                  borderRadius:
+                      BorderRadius.circular(context.radius.radiusCard),
+                ),
+              ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                    duration: const Duration(milliseconds: 1500),
+                    color: c.surface3,
+                  ),
+            ),
+            SizedBox(height: context.spacing.space2),
+            bar(w: 120, h: 14),
+            SizedBox(height: context.spacing.space1),
+            bar(w: 80, h: 12),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// FAB (§3.9 — bottom-right floating, fg-1, shadow-fab)
+// ════════════════════════════════════════════════════════════
+class _Fab extends StatelessWidget {
+  const _Fab();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      pressedScale: 0.96,
+      onTap: () => context.push('/products/add'),
+      child: Container(
+        width: 56,
+        height: 56,
         decoration: BoxDecoration(
-          color: context.appSurfaceL2,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          color: c.fg1,
+          shape: BoxShape.circle,
+          boxShadow: context.shadows.shadowFab,
         ),
+        alignment: Alignment.center,
+        child: Icon(Icons.add_rounded, color: c.surface0, size: 26),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Tap feedback (TODO(extract): duplicate of home/orders/picker)
+// ════════════════════════════════════════════════════════════
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.98,
+  });
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.onTap == null
+          ? null
+          : (_) {
+              _set(true);
+              HapticFeedback.lightImpact();
+            },
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _set(false);
+              widget.onTap!();
+            },
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+
+// TODO(chunk 10+): extract shared with `_ActiveBadge` (settings) and
+// `_StatusBadge` (home/orders) into
+// `lib/shared/widgets/inline_status_badge.dart`. Same surface1/coral
+// chip pattern with `radiusChip` + `tabPill` typography.
+class _InlineStockBadge extends StatelessWidget {
+  const _InlineStockBadge({
+    required this.label,
+    required this.bg,
+    required this.fg,
+  });
+
+  final String label;
+  final Color bg;
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(context.radius.radiusChip),
+      ),
+      child: Text(
+        label,
+        style: context.typography.tabPill.copyWith(color: fg),
       ),
     );
   }

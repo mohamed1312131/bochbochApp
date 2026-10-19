@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/app_border_radius.dart';
+import '../constants/app_spacing.dart';
+import '../constants/app_shadows.dart';
 
 abstract final class AppTheme {
   static ThemeData get light => ThemeData(
@@ -85,6 +87,13 @@ abstract final class AppTheme {
           unselectedItemColor: AppColors.textTertiary,
           elevation: 0,
         ),
+        extensions: const <ThemeExtension>[
+          AppColors.light,
+          AppTextStyles.standard,
+          AppSpacing.standard,
+          AppRadius.standard,
+          AppShadows.light,
+        ],
       );
 
   static ThemeData get dark => ThemeData(
@@ -191,5 +200,12 @@ abstract final class AppTheme {
           unselectedItemColor: AppColors.textTertiary,
           elevation: 0,
         ),
+        extensions: const <ThemeExtension>[
+          AppColors.dark,
+          AppTextStyles.standard,
+          AppSpacing.standard,
+          AppRadius.standard,
+          AppShadows.dark,
+        ],
       );
 }

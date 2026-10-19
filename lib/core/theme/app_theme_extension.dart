@@ -1,8 +1,30 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_typography.dart';
+import '../constants/app_spacing.dart';
+import '../constants/app_border_radius.dart';
+import '../constants/app_shadows.dart';
+import '../constants/app_motion.dart';
 
 extension AppThemeX on BuildContext {
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  // ── Grouped accessors (v1.1 API) ───────────────────────
+  // Use these in new code. Each returns the registered ThemeExtension
+  // instance for the active brightness.
+  AppColors get colors => Theme.of(this).extension<AppColors>()!;
+  AppTextStyles get typography => Theme.of(this).extension<AppTextStyles>()!;
+  AppSpacing get spacing => Theme.of(this).extension<AppSpacing>()!;
+  AppRadius get radius => Theme.of(this).extension<AppRadius>()!;
+  AppShadows get shadows => Theme.of(this).extension<AppShadows>()!;
+
+  /// Motion is mode-agnostic and not registered as a ThemeExtension.
+  AppMotion get motion => AppMotion.standard;
+
+  // ════════════════════════════════════════════════════════
+  // LEGACY FLAT GETTERS — kept for backward compatibility.
+  // Migrate callsites to the grouped accessors above.
+  // ════════════════════════════════════════════════════════
 
   // ── Backgrounds ────────────────────────────────────────
   Color get appBackground =>
@@ -38,57 +60,40 @@ extension AppThemeX on BuildContext {
   Color get appBrandLight =>
       isDark ? AppColors.brandLightDarkMode : AppColors.brandLight;
 
-  // ── Shadow ─────────────────────────────────────────────
-  List<BoxShadow> get appCardShadow => isDark
-      ? const <BoxShadow>[]
-      : const [
-          BoxShadow(
-            color: Color(0x0F000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ];
+  // ════════════════════════════════════════════════════════
+  // NEUTRALIZED GETTERS — palette/elevation violations.
+  // Resolve to the nearest valid v1.1 token.
+  // ════════════════════════════════════════════════════════
 
-  List<BoxShadow> get appCardShadowLg => isDark
-      ? []
-      : [
-          const BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 16,
-            offset: Offset(0, 4),
-          ),
-        ];
+  @Deprecated('ELEVATION VIOLATION — v1.1 §2.5: cards use borders + spacing. Use context.shadows.shadowNone.')
+  List<BoxShadow> get appCardShadow => shadows.shadowNone;
 
-  // ── Streak / Achievement ────────────────────────────────
-  Color get appStreak =>
-      isDark ? AppColors.streakDarkMode : AppColors.streak;
+  @Deprecated('ELEVATION VIOLATION — v1.1 §2.5. Use context.shadows.shadowNone.')
+  List<BoxShadow> get appCardShadowLg => shadows.shadowNone;
 
-  Color get appStreakBg =>
-      isDark ? AppColors.streakDarkMode.withValues(alpha: 0.15)
-             : AppColors.streakBg;
+  @Deprecated('PALETTE VIOLATION — orange streak removed. Use context.colors.coral.')
+  Color get appStreak => colors.coral;
 
-  // ── AI accent ───────────────────────────────────────────
-  Color get appAi =>
-      isDark ? AppColors.aiDarkMode : AppColors.ai;
+  @Deprecated('PALETTE VIOLATION — orange streak removed. Use context.colors.coralTint12.')
+  Color get appStreakBg => colors.coralTint12;
 
-  Color get appAiBg =>
-      isDark ? AppColors.aiDarkMode.withValues(alpha: 0.15)
-             : AppColors.aiBg;
+  @Deprecated('PALETTE VIOLATION — purple AI removed. AI Studio deferred to v2. Use context.colors.coral.')
+  Color get appAi => colors.coral;
 
-  // ── Hero gradient (canonical) ──────────────────────────
-  // Use this on all hero/premium cards — never hard-code.
-  LinearGradient get appHeroGradient => const LinearGradient(
-        colors: [
-          AppColors.heroGradientStart,
-          AppColors.heroGradientEnd,
-        ],
+  @Deprecated('PALETTE VIOLATION — purple AI removed. Use context.colors.coralTint12.')
+  Color get appAiBg => colors.coralTint12;
+
+  @Deprecated('PALETTE VIOLATION — decorative gradient removed per Rule 4. Renders as solid fg-1.')
+  LinearGradient get appHeroGradient => LinearGradient(
+        colors: [colors.fg1, colors.fg1],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
 
-  BoxShadow get appHeroGlow => BoxShadow(
-        color: AppColors.heroGradientGlow.withValues(alpha: 0.35),
-        blurRadius: 24,
-        offset: const Offset(0, 8),
+  @Deprecated('PALETTE VIOLATION — decorative glow removed.')
+  BoxShadow get appHeroGlow => const BoxShadow(
+        color: Color(0x00000000),
+        blurRadius: 0,
+        offset: Offset.zero,
       );
 }

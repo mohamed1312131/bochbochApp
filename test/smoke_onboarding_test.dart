@@ -28,8 +28,6 @@ class _FakeOnboardingNotifier
   @override
   void setBoutiqueCity(String v) => _set(_s.copyWith(boutiqueCity: v));
   @override
-  void setBrandColor(String? v) => _set(_s.copyWith(brandColor: v));
-  @override
   void setGoalKind(String v) => _set(_s.copyWith(goalKind: v));
   @override
   void setGoalType(String v) => _set(_s.copyWith(goalType: v));

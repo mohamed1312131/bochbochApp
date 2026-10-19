@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,24 +12,29 @@ import 'l10n/app_localizations.dart';
 import 'router.dart';
 import 'shared/providers/theme_provider.dart';
 
+/// Set DIDO_DEV_RESET=true via --dart-define when you want every launch
+/// to wipe secure storage + onboarding drafts. Defaults to false so
+/// release/profile builds NEVER nuke real user state on cold start
+/// (the previous behaviour signed users out on every relaunch — C1).
+const _devReset =
+    bool.fromEnvironment('DIDO_DEV_RESET', defaultValue: false);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // DEV ONLY: clear stale keychain on fresh build.
-  // iOS keychain persists across `flutter clean` and reinstalls — wipe it
-  // if there's no access token, so ghost sessions from a previous user
-  // (cached name/email/onboarding_user_id) don't leak into the new run.
-  // Logged-in users are untouched.
-  const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  // TEMP: force clear on every launch until testing is done
-  await storage.deleteAll();
+  // Dev-only state reset. Active only when explicitly opted in via
+  // --dart-define=DIDO_DEV_RESET=true AND the build is not release.
+  // Skips silently otherwise.
+  if (_devReset && !kReleaseMode) {
+    const storage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    );
+    await storage.deleteAll();
 
-  // DEV ONLY: clear Drift database (onboarding drafts, etc.)
-  final db = AppDatabase();
-  await db.customStatement('DELETE FROM onboarding_drafts');
-  await db.close();
+    final db = AppDatabase();
+    await db.customStatement('DELETE FROM onboarding_drafts');
+    await db.close();
+  }
 
   await DioClient.getInstance();
   await PostHogService.initialize();

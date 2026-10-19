@@ -1,10 +1,6 @@
 /// Feature flags loaded at build time via --dart-define.
-/// AI features are deferred to v2 per spec. Hidden by default.
-/// To enable for development: flutter run --dart-define=AI_ENABLED=true
 class FeatureFlags {
   const FeatureFlags._();
-  static const bool aiEnabled =
-      bool.fromEnvironment('AI_ENABLED', defaultValue: false);
 
   /// Gates the Google Sign-In button. The native GoogleSignIn iOS SDK
   /// throws an uncatchable NSException (SIGABRT) when the app is missing

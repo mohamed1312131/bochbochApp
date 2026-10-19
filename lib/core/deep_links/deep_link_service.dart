@@ -5,22 +5,13 @@ import 'package:go_router/go_router.dart';
 
 /// Pure URI → internal-route mapper. Public so it can be unit-tested
 /// without an AppLinks/GoRouter instance.
+///
+/// Currently no scheme is mapped — Paymee deep-link routes were removed
+/// alongside the backend Paymee gateway in Wave 1. Add cases here when
+/// new deep-link entry points (password reset, share, etc.) ship.
 String? mapUriToRoute(Uri uri) {
   if (uri.scheme != 'dido') return null;
-  switch (uri.host) {
-    case 'payment':
-      if (uri.pathSegments.isEmpty) return null;
-      final paymentId = uri.queryParameters['paymentId'] ?? '';
-      switch (uri.pathSegments.first) {
-        case 'return':
-          return '/payment/return?paymentId=$paymentId';
-        case 'cancel':
-          return '/payment/cancel?paymentId=$paymentId';
-      }
-      return null;
-    default:
-      return null;
-  }
+  return null;
 }
 
 class DeepLinkService {

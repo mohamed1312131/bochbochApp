@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/theme/app_theme_extension.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/observability/posthog_service.dart';
+import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
+import '../../../../shared/widgets/dido_button.dart';
 import '../../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 
@@ -48,8 +46,15 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   String get _otp => _controllers.map((c) => c.text).join();
 
   Future<void> _verify() async {
+    // H6: the auto-fire from `_onChanged` (`if (_otp.length == 6) _verify()`)
+    // can trigger _verify multiple times in fast typing or paste/backspace
+    // sequences. Without this guard the screen issued duplicate
+    // POST /auth/verify-email calls — second one usually 400'd, but the
+    // backend OTP attempts counter ticked twice.
+    if (_isLoading) return;
+
     if (_otp.length < 6) {
-      setState(() => _error = 'Enter the 6-digit code');
+      setState(() => _error = 'Entrez le code à 6 chiffres');
       return;
     }
 
@@ -58,7 +63,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     final email = registerState.email;
 
     if (userId == null || email == null) {
-      setState(() => _error = 'Session expired. Please register again.');
+      setState(() =>
+          _error = 'Session expirée. Recommencez l\'inscription.');
       return;
     }
 
@@ -93,205 +99,167 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     if (value.isEmpty && index > 0) {
       _focusNodes[index - 1].requestFocus();
     }
-    // Auto submit when all filled
     if (_otp.length == 6) _verify();
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final registerState = ref.watch(registerProvider);
     final email = registerState.email ?? '';
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenHorizontal,
-          ),
+          padding:
+              EdgeInsets.symmetric(horizontal: context.spacing.screenEdge),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: AppSpacing.xxxl),
-
-              // Back button
-              GestureDetector(
-                onTap: () => context.go('/auth/register'),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: context.appSurfaceL2,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                  ),
-                  child: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 16,
-                    color: context.appTextPrimary,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
+              SizedBox(height: context.spacing.space8),
+              _BackButton(onTap: () => context.go('/auth/register')),
+              SizedBox(height: context.spacing.space6),
               Text(
-                'Check your email',
-                style: AppTypography.h1.copyWith(
-                  color: context.appTextPrimary,
-                ),
+                'Vérifiez vos emails',
+                style: context.typography.h1.copyWith(color: c.fg1),
               ),
-              const SizedBox(height: AppSpacing.xs),
+              SizedBox(height: context.spacing.space2),
               RichText(
                 text: TextSpan(
-                  text: 'We sent a 6-digit code to ',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextSecondary,
-                  ),
+                  text: 'Nous avons envoyé un code à 6 chiffres à ',
+                  style:
+                      context.typography.bodyMd.copyWith(color: c.fg2),
                   children: [
                     TextSpan(
                       text: email,
-                      style: AppTypography.body.copyWith(
-                        color: context.appTextPrimary,
+                      style: context.typography.bodyMd.copyWith(
+                        color: c.fg1,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: AppSpacing.xxxl),
-
-              // OTP fields
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(6, (index) {
-                  return SizedBox(
-                    width: 48,
-                    height: 56,
-                    child: TextFormField(
-                      controller: _controllers[index],
-                      focusNode: _focusNodes[index],
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      maxLength: 1,
-                      style: AppTypography.h3.copyWith(
-                        color: context.appTextPrimary,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      decoration: InputDecoration(
-                        counterText: '',
-                        contentPadding: EdgeInsets.zero,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.md),
-                          borderSide:
-                              BorderSide(color: context.appBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.md),
-                          borderSide: BorderSide(
-                            color: context.appBrand,
-                            width: 2,
-                          ),
-                        ),
-                        filled: true,
-                        fillColor: context.appSurface,
-                      ),
-                      onChanged: (value) => _onChanged(value, index),
-                    ),
-                  );
-                }),
+              SizedBox(height: context.spacing.space8),
+              _OtpRow(
+                controllers: _controllers,
+                focusNodes: _focusNodes,
+                onChanged: _onChanged,
               ),
-
-              // Error
               if (_error != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.errorBg,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
+                SizedBox(height: context.spacing.space4),
+                _ErrorBanner(message: _error!),
               ],
-
-              const SizedBox(height: AppSpacing.xxl),
-
-              // Verify button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _verify,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.appBrand,
-                    foregroundColor: AppColors.white,
-                    disabledBackgroundColor:
-                        context.appBrand.withValues(alpha: 0.3),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.white,
-                          ),
-                        )
-                      : Text(
-                          'Verify Email',
-                          style: AppTypography.bodyLarge.copyWith(
-                            color: AppColors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
+              SizedBox(height: context.spacing.space6),
+              DidoButton.primary(
+                label: 'Vérifier l\'email',
+                loading: _isLoading,
+                onPressed: _verify,
               ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              // Resend
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    // TODO: resend OTP endpoint when backend adds it
-                  },
-                  child: RichText(
-                    text: TextSpan(
-                      text: "Didn't receive the code? ",
-                      style: AppTypography.body.copyWith(
-                        color: context.appTextSecondary,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: 'Resend',
-                          style: AppTypography.body.copyWith(
-                            color: context.appBrand,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              SizedBox(height: context.spacing.space6),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// OTP row + shared pieces (inlined per file)
+// ════════════════════════════════════════════════════════════
+class _OtpRow extends StatelessWidget {
+  const _OtpRow({
+    required this.controllers,
+    required this.focusNodes,
+    required this.onChanged,
+  });
+
+  final List<TextEditingController> controllers;
+  final List<FocusNode> focusNodes;
+  final void Function(String value, int index) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final radius = BorderRadius.circular(context.radius.radiusInput);
+    OutlineInputBorder b(Color color, double width) => OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: color, width: width));
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(6, (index) {
+        return SizedBox(
+          width: 48,
+          height: 56,
+          child: TextFormField(
+            controller: controllers[index],
+            focusNode: focusNodes[index],
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            maxLength: 1,
+            style: context.typography.h3.copyWith(color: c.fg1),
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+            ],
+            decoration: InputDecoration(
+              counterText: '',
+              contentPadding: EdgeInsets.zero,
+              filled: true,
+              fillColor: c.surface1,
+              border: b(c.border1, 1),
+              enabledBorder: b(c.border1, 1),
+              focusedBorder: b(c.fg1, 1.5),
+            ),
+            onChanged: (value) => onChanged(value, index),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration:
+            BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Icon(Icons.arrow_back_ios_new_rounded,
+            size: 16, color: c.fg1),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.spacing.space3),
+      decoration: BoxDecoration(
+        color: c.redTint12,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: Text(
+        message,
+        style: context.typography.bodySmall.copyWith(color: c.redFg),
       ),
     );
   }

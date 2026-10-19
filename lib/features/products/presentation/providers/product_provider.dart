@@ -79,6 +79,10 @@ final productDetailProvider =
 // ── Add Product State ──────────────────────────────────────
 enum AddProductStatus { idle, loading, success, error }
 
+// Sentinel for explicit-null vs not-passed in copyWith — see same
+// pattern in AddOrderState (H12 fix).
+const Object _addProductUnchanged = Object();
+
 class AddProductState {
   const AddProductState({
     this.status = AddProductStatus.idle,
@@ -93,12 +97,14 @@ class AddProductState {
   AddProductState copyWith({
     AddProductStatus? status,
     String? error,
-    Product? createdProduct,
+    Object? createdProduct = _addProductUnchanged,
   }) =>
       AddProductState(
         status: status ?? this.status,
         error: error,
-        createdProduct: createdProduct ?? this.createdProduct,
+        createdProduct: identical(createdProduct, _addProductUnchanged)
+            ? this.createdProduct
+            : createdProduct as Product?,
       );
 }
 
@@ -113,9 +119,20 @@ class AddProductNotifier extends AutoDisposeNotifier<AddProductState> {
     required int initialStock,
     String? description,
     String? category,
+    String? categoryId,
+    int? lowStockThreshold,
+    bool? backorderEnabled,
+    bool? isBundle,
     String? imagePath,
+    List<Map<String, dynamic>>? variants,
   }) async {
-    state = state.copyWith(status: AddProductStatus.loading, error: null);
+    // Clear stale createdProduct from a prior submit so a failed retry
+    // doesn't leak the previous successful product into the new flow.
+    state = state.copyWith(
+      status: AddProductStatus.loading,
+      error: null,
+      createdProduct: null,
+    );
 
     try {
       final repo = ref.read(productRepositoryProvider);
@@ -128,6 +145,11 @@ class AddProductNotifier extends AutoDisposeNotifier<AddProductState> {
         initialStock: initialStock,
         description: description,
         category: category,
+        categoryId: categoryId,
+        lowStockThreshold: lowStockThreshold,
+        backorderEnabled: backorderEnabled,
+        isBundle: isBundle,
+        variants: variants,
       );
 
       // 2. Upload + attach image if provided

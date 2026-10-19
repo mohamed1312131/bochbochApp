@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_border_radius.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_typography.dart';
+import 'package:flutter/services.dart';
+
 import '../../core/theme/app_theme_extension.dart';
 
 enum _DidoButtonVariant { primary, secondary, destructive }
 
-class DidoButton extends StatelessWidget {
+/// DIDO primary action button — UX_DESIGN_SYSTEM_V1.1.md §3.1, §3.2, §3.3.
+///
+/// Three variants, all token-driven:
+/// - `.primary`     — `fg-1` bg, `surface-0` text, no border. The single
+///                    primary action per screen (Rule 6).
+/// - `.secondary`   — `surface-1` bg, `fg-1` text, 1px `border-1` border.
+/// - `.destructive` — `red` bg, `surface-0` text. Reserved for confirmed
+///                    destructive operations (delete, cancel order).
+///
+/// All buttons use 8px radius (`radius-input`), 48px min height, and the
+/// scale + haptic press feedback from §6.3 — no Material InkWell ripple.
+class DidoButton extends StatefulWidget {
   const DidoButton._({
     super.key,
     required this.label,
@@ -83,97 +93,133 @@ class DidoButton extends StatelessWidget {
   final bool fullWidth;
   final bool enabled;
 
-  bool get _isInteractive => enabled && !loading && onPressed != null;
+  @override
+  State<DidoButton> createState() => _DidoButtonState();
+}
+
+class _DidoButtonState extends State<DidoButton> {
+  bool _pressed = false;
+
+  /// Taps fire only when explicitly enabled, not loading, and a real
+  /// callback was provided.
+  bool get _isInteractive =>
+      widget.enabled && !widget.loading && widget.onPressed != null;
+
+  /// Use disabled colors only when explicitly disabled AND not loading.
+  /// Loading-with-disabled keeps the enabled colors (spinner takes priority
+  /// per the spec — the user should see active styling under the spinner).
+  bool get _useDisabledColors => !widget.enabled && !widget.loading;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  _Scheme _resolveScheme(BuildContext context) {
+    final c = context.colors;
+    switch (widget._variant) {
+      case _DidoButtonVariant.primary:
+        return _Scheme(
+          background: c.fg1,
+          foreground: c.surface0,
+          border: null,
+          spinner: c.surface0,
+          disabledBackground: c.fg4,
+          disabledForeground: c.surface0,
+        );
+      case _DidoButtonVariant.secondary:
+        return _Scheme(
+          background: c.surface1,
+          foreground: c.fg1,
+          border: c.border1,
+          spinner: c.fg1,
+          disabledBackground: c.surface1,
+          disabledForeground: c.fg4,
+        );
+      case _DidoButtonVariant.destructive:
+        return _Scheme(
+          background: c.red,
+          foreground: c.surface0,
+          border: null,
+          spinner: c.surface0,
+          disabledBackground: c.fg4,
+          disabledForeground: c.surface0,
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = _resolveScheme(context);
-    final effectiveBg = _isInteractive
-        ? scheme.background
-        : scheme.background.withValues(alpha: 0.5);
-    final effectiveFg = _isInteractive
-        ? scheme.foreground
-        : scheme.foreground.withValues(alpha: 0.5);
-    final effectiveBorder = scheme.border == null
-        ? null
-        : (_isInteractive
-            ? scheme.border!
-            : scheme.border!.withValues(alpha: 0.5));
+    final bg = _useDisabledColors ? scheme.disabledBackground : scheme.background;
+    final fg = _useDisabledColors ? scheme.disabledForeground : scheme.foreground;
+    final radius = BorderRadius.circular(context.radius.radiusInput);
 
-    final radius = BorderRadius.circular(AppRadius.lg);
-
-    final child = loading
+    final content = widget.loading
         ? SizedBox(
-            width: 20,
-            height: 20,
+            width: 18,
+            height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
               color: scheme.spinner,
             ),
           )
         : Row(
-            mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisSize:
+                widget.fullWidth ? MainAxisSize.max : MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: effectiveFg),
-                const SizedBox(width: 8),
+              if (widget.icon != null) ...[
+                Icon(widget.icon, size: 18, color: fg),
+                SizedBox(width: context.spacing.space2),
               ],
               Text(
-                label,
-                style: AppTypography.bodyLarge.copyWith(
-                  color: effectiveFg,
-                  fontWeight: FontWeight.w600,
-                ),
+                widget.label,
+                style: context.typography.button.copyWith(color: fg),
               ),
             ],
           );
 
-    final body = Material(
-      color: effectiveBg,
-      shape: RoundedRectangleBorder(
+    final body = Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: bg,
         borderRadius: radius,
-        side: effectiveBorder == null
-            ? BorderSide.none
-            : BorderSide(color: effectiveBorder, width: 1.5),
+        border: scheme.border == null
+            ? null
+            : Border.all(color: scheme.border!, width: 1),
       ),
-      child: InkWell(
-        onTap: _isInteractive ? onPressed : null,
-        borderRadius: radius,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: SizedBox(height: 52, child: Center(child: child)),
-        ),
-      ),
+      alignment: Alignment.center,
+      child: content,
     );
 
-    return fullWidth ? SizedBox(width: double.infinity, child: body) : body;
-  }
+    final scaled = AnimatedScale(
+      scale: _pressed ? 0.98 : 1.0,
+      duration: context.motion.tap,
+      curve: context.motion.easeOut,
+      child: body,
+    );
 
-  _Scheme _resolveScheme(BuildContext context) {
-    switch (_variant) {
-      case _DidoButtonVariant.primary:
-        return _Scheme(
-          background: context.appBrand,
-          foreground: AppColors.white,
-          border: null,
-          spinner: AppColors.white,
-        );
-      case _DidoButtonVariant.secondary:
-        return _Scheme(
-          background: Colors.transparent,
-          foreground: context.appTextPrimary,
-          border: context.appBorder,
-          spinner: context.appBrand,
-        );
-      case _DidoButtonVariant.destructive:
-        return _Scheme(
-          background: AppColors.error,
-          foreground: AppColors.white,
-          border: null,
-          spinner: AppColors.white,
-        );
-    }
+    final sized =
+        widget.fullWidth ? SizedBox(width: double.infinity, child: scaled) : scaled;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: _isInteractive
+          ? (_) {
+              _setPressed(true);
+              HapticFeedback.lightImpact();
+            }
+          : null,
+      onTapUp: _isInteractive
+          ? (_) {
+              _setPressed(false);
+              widget.onPressed?.call();
+            }
+          : null,
+      onTapCancel: () => _setPressed(false),
+      child: sized,
+    );
   }
 }
 
@@ -183,9 +229,14 @@ class _Scheme {
     required this.foreground,
     required this.border,
     required this.spinner,
+    required this.disabledBackground,
+    required this.disabledForeground,
   });
+
   final Color background;
   final Color foreground;
   final Color? border;
   final Color spinner;
+  final Color disabledBackground;
+  final Color disabledForeground;
 }

@@ -1,10 +1,13 @@
 import 'package:intl/intl.dart';
 
 abstract final class MillimesFormatter {
-  // 85000 → "85 TND"
+  // French thousands separator (NBSP) — `12_400_000 → "12 400 TND"`.
+  static final NumberFormat _tndFormatter = NumberFormat('#,##0', 'fr_FR');
+
+  // 85000 → "85 TND" · 12400000 → "12 400 TND"
   static String format(int millimes) {
     final tnd = (millimes / 1000).round();
-    return '$tnd TND';
+    return '${_tndFormatter.format(tnd)} TND';
   }
 
   // 85000 → "85.000"

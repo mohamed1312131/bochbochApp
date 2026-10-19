@@ -168,6 +168,22 @@ class AuthRepository {
     }
   }
 
+  /// Resend the password-reset OTP — backend has no dedicated resend
+  /// endpoint, but `/auth/forgot-password` issues a fresh code on each
+  /// call. The screen layers a 60s client-side cooldown on top because
+  /// the backend leaves this route un-rate-limited.
+  Future<void> resendForgotPasswordOtp(String email) async {
+    try {
+      final dio = await _getDio();
+      await dio.post(
+        ApiEndpoints.forgotPassword,
+        data: {'email': email},
+      );
+    } catch (e) {
+      throw ErrorHandler.handle(e);
+    }
+  }
+
   Future<void> resetPassword({
     required String email,
     required String otp,

@@ -49,6 +49,10 @@ class ProductRepository {
   }
 
   // ── Create ─────────────────────────────────────────────
+  /// When [variants] is non-empty, the backend skips the implicit
+  /// "Default" single variant and creates one variant per entry with
+  /// the provided attribute/stock/price values. [initialStock] is
+  /// ignored in that path.
   Future<Product> createProduct({
     required String name,
     required int baseCostPrice,
@@ -56,6 +60,11 @@ class ProductRepository {
     required int initialStock,
     String? description,
     String? category,
+    String? categoryId,
+    int? lowStockThreshold,
+    bool? backorderEnabled,
+    bool? isBundle,
+    List<Map<String, dynamic>>? variants,
   }) async {
     try {
       final dio = await _getDio();
@@ -69,6 +78,13 @@ class ProductRepository {
           if (description != null && description.isNotEmpty)
             'description': description,
           if (category != null && category.isNotEmpty) 'category': category,
+          if (categoryId != null) 'categoryId': categoryId,
+          if (lowStockThreshold != null)
+            'lowStockThreshold': lowStockThreshold,
+          if (backorderEnabled != null)
+            'backorderEnabled': backorderEnabled,
+          if (isBundle != null) 'isBundle': isBundle,
+          if (variants != null && variants.isNotEmpty) 'variants': variants,
         },
       );
       return Product.fromJson(response.data as Map<String, dynamic>);
@@ -83,9 +99,12 @@ class ProductRepository {
     String? name,
     String? description,
     String? category,
+    String? categoryId,
     int? baseCostPrice,
     int? baseSellPrice,
     bool? isActive,
+    int? lowStockThreshold,
+    bool? backorderEnabled,
   }) async {
     try {
       final dio = await _getDio();
@@ -95,9 +114,14 @@ class ProductRepository {
           if (name != null) 'name': name,
           if (description != null) 'description': description,
           if (category != null) 'category': category,
+          if (categoryId != null) 'categoryId': categoryId,
           if (baseCostPrice != null) 'baseCostPrice': baseCostPrice,
           if (baseSellPrice != null) 'baseSellPrice': baseSellPrice,
           if (isActive != null) 'isActive': isActive,
+          if (lowStockThreshold != null)
+            'lowStockThreshold': lowStockThreshold,
+          if (backorderEnabled != null)
+            'backorderEnabled': backorderEnabled,
         },
       );
       return Product.fromJson(response.data as Map<String, dynamic>);

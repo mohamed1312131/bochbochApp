@@ -22,7 +22,6 @@ mixin _$OnboardingState {
   String? get boutiqueCategory => throw _privateConstructorUsedError;
   String? get boutiqueCity => throw _privateConstructorUsedError;
   String? get logoUrl => throw _privateConstructorUsedError;
-  String? get brandColor => throw _privateConstructorUsedError;
   String get goalKind => throw _privateConstructorUsedError;
   String get goalType => throw _privateConstructorUsedError;
   int? get goalTargetValue => throw _privateConstructorUsedError;
@@ -51,7 +50,6 @@ abstract class $OnboardingStateCopyWith<$Res> {
     String? boutiqueCategory,
     String? boutiqueCity,
     String? logoUrl,
-    String? brandColor,
     String goalKind,
     String goalType,
     int? goalTargetValue,
@@ -82,7 +80,6 @@ class _$OnboardingStateCopyWithImpl<$Res, $Val extends OnboardingState>
     Object? boutiqueCategory = freezed,
     Object? boutiqueCity = freezed,
     Object? logoUrl = freezed,
-    Object? brandColor = freezed,
     Object? goalKind = null,
     Object? goalType = null,
     Object? goalTargetValue = freezed,
@@ -112,10 +109,6 @@ class _$OnboardingStateCopyWithImpl<$Res, $Val extends OnboardingState>
             logoUrl: freezed == logoUrl
                 ? _value.logoUrl
                 : logoUrl // ignore: cast_nullable_to_non_nullable
-                      as String?,
-            brandColor: freezed == brandColor
-                ? _value.brandColor
-                : brandColor // ignore: cast_nullable_to_non_nullable
                       as String?,
             goalKind: null == goalKind
                 ? _value.goalKind
@@ -166,7 +159,6 @@ abstract class _$$OnboardingStateImplCopyWith<$Res>
     String? boutiqueCategory,
     String? boutiqueCity,
     String? logoUrl,
-    String? brandColor,
     String goalKind,
     String goalType,
     int? goalTargetValue,
@@ -196,7 +188,6 @@ class __$$OnboardingStateImplCopyWithImpl<$Res>
     Object? boutiqueCategory = freezed,
     Object? boutiqueCity = freezed,
     Object? logoUrl = freezed,
-    Object? brandColor = freezed,
     Object? goalKind = null,
     Object? goalType = null,
     Object? goalTargetValue = freezed,
@@ -226,10 +217,6 @@ class __$$OnboardingStateImplCopyWithImpl<$Res>
         logoUrl: freezed == logoUrl
             ? _value.logoUrl
             : logoUrl // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        brandColor: freezed == brandColor
-            ? _value.brandColor
-            : brandColor // ignore: cast_nullable_to_non_nullable
                   as String?,
         goalKind: null == goalKind
             ? _value.goalKind
@@ -273,7 +260,6 @@ class _$OnboardingStateImpl implements _OnboardingState {
     this.boutiqueCategory,
     this.boutiqueCity,
     this.logoUrl,
-    this.brandColor,
     this.goalKind = 'TRACKED',
     this.goalType = 'REVENUE',
     this.goalTargetValue,
@@ -296,8 +282,6 @@ class _$OnboardingStateImpl implements _OnboardingState {
   @override
   final String? logoUrl;
   @override
-  final String? brandColor;
-  @override
   @JsonKey()
   final String goalKind;
   @override
@@ -318,7 +302,7 @@ class _$OnboardingStateImpl implements _OnboardingState {
 
   @override
   String toString() {
-    return 'OnboardingState(currentStep: $currentStep, boutiqueName: $boutiqueName, boutiqueCategory: $boutiqueCategory, boutiqueCity: $boutiqueCity, logoUrl: $logoUrl, brandColor: $brandColor, goalKind: $goalKind, goalType: $goalType, goalTargetValue: $goalTargetValue, goalLabel: $goalLabel, isLoading: $isLoading, isUploadingLogo: $isUploadingLogo, errorMessage: $errorMessage)';
+    return 'OnboardingState(currentStep: $currentStep, boutiqueName: $boutiqueName, boutiqueCategory: $boutiqueCategory, boutiqueCity: $boutiqueCity, logoUrl: $logoUrl, goalKind: $goalKind, goalType: $goalType, goalTargetValue: $goalTargetValue, goalLabel: $goalLabel, isLoading: $isLoading, isUploadingLogo: $isUploadingLogo, errorMessage: $errorMessage)';
   }
 
   @override
@@ -335,8 +319,6 @@ class _$OnboardingStateImpl implements _OnboardingState {
             (identical(other.boutiqueCity, boutiqueCity) ||
                 other.boutiqueCity == boutiqueCity) &&
             (identical(other.logoUrl, logoUrl) || other.logoUrl == logoUrl) &&
-            (identical(other.brandColor, brandColor) ||
-                other.brandColor == brandColor) &&
             (identical(other.goalKind, goalKind) ||
                 other.goalKind == goalKind) &&
             (identical(other.goalType, goalType) ||
@@ -361,7 +343,6 @@ class _$OnboardingStateImpl implements _OnboardingState {
     boutiqueCategory,
     boutiqueCity,
     logoUrl,
-    brandColor,
     goalKind,
     goalType,
     goalTargetValue,
@@ -390,7 +371,6 @@ abstract class _OnboardingState implements OnboardingState {
     final String? boutiqueCategory,
     final String? boutiqueCity,
     final String? logoUrl,
-    final String? brandColor,
     final String goalKind,
     final String goalType,
     final int? goalTargetValue,
@@ -410,8 +390,6 @@ abstract class _OnboardingState implements OnboardingState {
   String? get boutiqueCity;
   @override
   String? get logoUrl;
-  @override
-  String? get brandColor;
   @override
   String get goalKind;
   @override

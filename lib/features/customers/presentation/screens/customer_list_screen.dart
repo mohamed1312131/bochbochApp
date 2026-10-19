@@ -1,16 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
+
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
-import '../providers/customer_provider.dart';
+import '../../../../shared/providers/user_name_provider.dart';
+import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/segment_chip.dart';
 import '../../domain/customer_models.dart';
+import '../providers/customer_provider.dart';
+
+// TODO(home): wire to real data — boutique provider
+const _mockBoutiqueName = 'Boutique Sania';
+const _mockBoutiqueInitial = 'S';
+
+// TODO(notifs): wire to real data — notifications provider
+const _mockHasUnreadNotifs = true;
 
 enum _SortOption { recentOrder, mostSpent, mostOrders }
+
+const _segmentCodes = <String?>[
+  null,
+  'VIP',
+  'LOYAL',
+  'NEW',
+  'AT_RISK',
+  'RETURNER',
+];
+
+String _segmentLabel(String? code) => switch (code) {
+      null => 'Tous',
+      'VIP' => 'VIP',
+      'LOYAL' => 'Fidèle',
+      'NEW' => 'Nouveau',
+      'AT_RISK' => 'À risque',
+      'RETURNER' => 'De retour',
+      _ => code,
+    };
 
 class CustomerListScreen extends ConsumerStatefulWidget {
   const CustomerListScreen({super.key});
@@ -23,11 +51,9 @@ class CustomerListScreen extends ConsumerStatefulWidget {
 class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
-  String _searchQuery = '';
+  String _query = '';
   String? _segmentFilter;
   _SortOption _sort = _SortOption.recentOrder;
-
-  final _segments = [null, 'VIP', 'LOYAL', 'NEW', 'AT_RISK', 'RETURNER'];
 
   @override
   void initState() {
@@ -49,331 +75,162 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
     }
   }
 
-  Color _segmentColor(String? segment) => switch (segment) {
-        'VIP' => const Color(0xFFD97706),
-        'LOYAL' => AppColors.success,
-        'AT_RISK' => AppColors.error,
-        'NEW' => AppColors.info,
-        'RETURNER' => const Color(0xFF8B5CF6),
-        _ => AppColors.textTertiary,
-      };
-
-  Color _segmentBg(String? segment) => switch (segment) {
-        'VIP' => const Color(0xFFFEF3C7),
-        'LOYAL' => AppColors.successBg,
-        'AT_RISK' => AppColors.errorBg,
-        'NEW' => AppColors.infoBg,
-        'RETURNER' => const Color(0xFFF3F0FF),
-        _ => AppColors.surfaceL1,
-      };
-
   List<CustomerLean> _applyFiltersAndSort(List<CustomerLean> customers) {
-    var result = customers.where((c) {
-      final matchesSearch = _searchQuery.isEmpty ||
-          c.name.toLowerCase().contains(_searchQuery) ||
-          c.phone.contains(_searchQuery);
+    final q = _query;
+    final filtered = customers.where((c) {
+      final matchesQuery = q.isEmpty ||
+          c.name.toLowerCase().contains(q) ||
+          c.phone.contains(q);
       final matchesSegment =
           _segmentFilter == null || c.segment == _segmentFilter;
-      return matchesSearch && matchesSegment;
+      return matchesQuery && matchesSegment;
     }).toList();
 
-    result.sort((a, b) => switch (_sort) {
+    filtered.sort((a, b) => switch (_sort) {
           _SortOption.recentOrder => (b.lastOrderDate ?? DateTime(0))
               .compareTo(a.lastOrderDate ?? DateTime(0)),
           _SortOption.mostSpent => b.totalSpent.compareTo(a.totalSpent),
-          _SortOption.mostOrders =>
-            b.totalOrders.compareTo(a.totalOrders),
+          _SortOption.mostOrders => b.totalOrders.compareTo(a.totalOrders),
         });
-
-    return result;
+    return filtered;
   }
 
-  void _showSortSheet() {
-    showModalBottomSheet(
+  Future<void> _openSortSheet() async {
+    final picked = await showModalBottomSheet<_SortOption>(
       context: context,
-      backgroundColor: context.appSurface,
-      useRootNavigator: true,
-      isScrollControlled: true,
+      backgroundColor: context.colors.surface0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.appBorder,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Text('Sort by',
-                  style: AppTypography.h4
-                      .copyWith(color: context.appTextPrimary)),
-              const SizedBox(height: AppSpacing.sm),
-              _SortTile(
-                label: 'Most Recent Order',
-                icon: Icons.access_time_rounded,
-                selected: _sort == _SortOption.recentOrder,
-                onTap: () {
-                  setState(() => _sort = _SortOption.recentOrder);
-                  Navigator.pop(ctx);
-                },
-              ),
-              _SortTile(
-                label: 'Most Spent',
-                icon: Icons.monetization_on_outlined,
-                selected: _sort == _SortOption.mostSpent,
-                onTap: () {
-                  setState(() => _sort = _SortOption.mostSpent);
-                  Navigator.pop(ctx);
-                },
-              ),
-              _SortTile(
-                label: 'Most Orders',
-                icon: Icons.receipt_long_outlined,
-                selected: _sort == _SortOption.mostOrders,
-                onTap: () {
-                  setState(() => _sort = _SortOption.mostOrders);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ],
-          ),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(context.radius.radiusSheet),
         ),
       ),
+      builder: (ctx) => _SortSheet(current: _sort),
     );
+    if (picked != null && mounted) {
+      setState(() => _sort = picked);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final customersAsync = ref.watch(customerListProvider);
+    final userAsync = ref.watch(userNameProvider);
+    final userInitial = userAsync.maybeWhen(
+      data: (name) => name.isNotEmpty ? name[0].toUpperCase() : 'M',
+      orElse: () => 'M',
+    );
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ─────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal,
-                AppSpacing.xl,
-                AppSpacing.screenHorizontal,
-                AppSpacing.md,
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                context.spacing.space4,
+                context.spacing.screenEdge,
+                context.spacing.space2,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Clients',
-                    style: AppTypography.h1.copyWith(
-                      color: context.appTextPrimary,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      // Sort button
-                      GestureDetector(
-                        onTap: _showSortSheet,
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: context.appSurface,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                            border: Border.all(color: context.appBorder),
-                          ),
-                          child: Icon(
-                            Icons.sort_rounded,
-                            size: 18,
-                            color: context.appTextSecondary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      // Total badge
-                      customersAsync.maybeWhen(
-                        data: (customers) => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: context.appBrandLight,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.full),
-                          ),
-                          child: Text(
-                            '${customers.length}',
-                            style: AppTypography.label.copyWith(
-                              color: context.appBrand,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        orElse: () => const SizedBox.shrink(),
-                      ),
-                    ],
-                  ),
+                  const _BoutiqueChip(),
+                  _UserAvatar(initial: userInitial),
                 ],
               ),
             ),
-
-            // ── Search ─────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal),
-              child: Container(
-                height: 40,
-                decoration: BoxDecoration(
-                  color: context.appSurface,
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border: Border.all(color: context.appBorder),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  style: AppTypography.bodySmall
-                      .copyWith(color: context.appTextPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name or phone...',
-                    hintStyle: AppTypography.bodySmall
-                        .copyWith(color: context.appTextTertiary),
-                    prefixIcon: Icon(Icons.search_rounded,
-                        color: context.appTextTertiary, size: 18),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  onChanged: (v) =>
-                      setState(() => _searchQuery = v.toLowerCase()),
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.screenEdge,
+                vertical: context.spacing.space3,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Clients',
+                  style: context.typography.h1.copyWith(color: c.fg1),
                 ),
               ),
             ),
-
-            const SizedBox(height: AppSpacing.sm),
-
-            // ── Segment filter (only if segments exist) ────
-            customersAsync.maybeWhen(
-              data: (customers) {
-                final hasSegments = customers.any((c) => c.segment != null);
-                if (!hasSegments) return const SizedBox.shrink();
-                return Column(
-                  children: [
-                    SizedBox(
-                      height: 30,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.screenHorizontal),
-                        child: Row(
-                          children: _segments.map((segment) {
-                            final isSelected = _segmentFilter == segment;
-                            final label = segment ?? 'All';
-                            final color = segment != null
-                                ? _segmentColor(segment)
-                                : context.appBrand;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setState(() => _segmentFilter = segment),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? color : context.appSurface,
-                                    borderRadius:
-                                        BorderRadius.circular(AppRadius.full),
-                                    border: Border.all(
-                                      color:
-                                          isSelected ? color : context.appBorder,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    label,
-                                    style: AppTypography.label.copyWith(
-                                      fontSize: 11,
-                                      color: isSelected
-                                          ? AppColors.white
-                                          : context.appTextSecondary,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-                );
-              },
-              orElse: () => const SizedBox.shrink(),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                0,
+                context.spacing.screenEdge,
+                context.spacing.space3,
+              ),
+              child: _SearchInput(
+                controller: _searchController,
+                hint: 'Nom, téléphone…',
+                onChanged: (v) => setState(() => _query = v.toLowerCase()),
+              ),
             ),
-
-            // ── List ───────────────────────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.spacing.screenEdge,
+                0,
+                context.spacing.screenEdge,
+                context.spacing.space3,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _SegmentFilter(
+                      selected: _segmentFilter,
+                      onSelected: (s) =>
+                          setState(() => _segmentFilter = s),
+                    ),
+                  ),
+                  SizedBox(width: context.spacing.space2),
+                  _SortButton(onTap: _openSortSheet),
+                ],
+              ),
+            ),
             Expanded(
               child: customersAsync.when(
-                loading: () => const _CustomerListSkeleton(),
-                error: (e, _) => _ErrorState(
+                loading: () => const _ListSkeleton(),
+                error: (_, __) => _ErrorState(
                   onRetry: () =>
                       ref.read(customerListProvider.notifier).refresh(),
                 ),
                 data: (customers) {
-                  final filtered = _applyFiltersAndSort(customers);
-
                   if (customers.isEmpty) return const _EmptyState();
-
+                  final filtered = _applyFiltersAndSort(customers);
                   if (filtered.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off_rounded,
-                              size: 48, color: context.appTextTertiary),
-                          const SizedBox(height: AppSpacing.md),
-                          Text('No clients found',
-                              style: AppTypography.h4.copyWith(
-                                  color: context.appTextPrimary)),
-                        ],
-                      ),
-                    );
+                    return _NoSearchResults(query: _query);
                   }
-
                   return RefreshIndicator(
-                    color: context.appBrand,
+                    color: c.fg1,
                     onRefresh: () =>
                         ref.read(customerListProvider.notifier).refresh(),
-                    child: ListView.separated(
+                    child: SingleChildScrollView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenHorizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        context.spacing.screenEdge,
                         0,
-                        AppSpacing.screenHorizontal,
+                        context.spacing.screenEdge,
                         100,
                       ),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: AppSpacing.xs),
-                      itemBuilder: (context, index) => _CustomerCard(
-                        customer: filtered[index],
-                        segmentColor: _segmentColor(filtered[index].segment),
-                        segmentBg: _segmentBg(filtered[index].segment),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom: context.spacing.space3,
+                            ),
+                            child: Text(
+                              'CLIENTS · ${filtered.length}',
+                              style: context.typography.label.copyWith(
+                                color: c.fg3,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
+                          _CustomerList(customers: filtered),
+                        ],
                       ),
                     ),
                   );
@@ -387,125 +244,52 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   }
 }
 
-// ── Customer Card — minimal, clean ─────────────────────────
-class _CustomerCard extends StatelessWidget {
-  const _CustomerCard({
-    required this.customer,
-    required this.segmentColor,
-    required this.segmentBg,
-  });
-
-  final CustomerLean customer;
-  final Color segmentColor;
-  final Color segmentBg;
+// ════════════════════════════════════════════════════════════
+// Header pieces (duplicated — TODO(extract))
+// ════════════════════════════════════════════════════════════
+class _BoutiqueChip extends StatelessWidget {
+  const _BoutiqueChip();
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push('/customers/${customer.id}'),
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () {
+        // TODO(home): open boutique switcher bottom sheet
+      },
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.md,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: context.appSurface,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: context.isDark
-              ? Border.all(color: context.appBorder)
-              : null,
-          boxShadow: context.appCardShadow,
+          color: c.surface1,
+          border: Border.all(color: c.border1),
+          borderRadius: BorderRadius.circular(context.radius.radiusInput),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Avatar
             Container(
-              width: 44,
-              height: 44,
+              width: 24,
+              height: 24,
               decoration: BoxDecoration(
-                color: context.appBrandLight,
-                borderRadius: BorderRadius.circular(AppRadius.full),
+                color: c.brandTeal,
+                shape: BoxShape.circle,
               ),
-              child: Center(
-                child: Text(
-                  customer.name[0].toUpperCase(),
-                  style: AppTypography.h4.copyWith(
-                    color: context.appBrand,
-                    fontWeight: FontWeight.w700,
-                  ),
+              alignment: Alignment.center,
+              child: Text(
+                _mockBoutiqueInitial,
+                style: context.typography.label.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.surface0,
                 ),
               ),
             ),
-
-            const SizedBox(width: AppSpacing.md),
-
-            // Name + phone
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    customer.name,
-                    style: AppTypography.body.copyWith(
-                      color: context.appTextPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    customer.phone,
-                    style: AppTypography.caption.copyWith(
-                      color: context.appTextTertiary,
-                    ),
-                  ),
-                ],
-              ),
+            SizedBox(width: context.spacing.space2),
+            Text(
+              _mockBoutiqueName,
+              style: context.typography.bodyMd.copyWith(color: c.fg1),
             ),
-
-            // Right: spent + segment
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  MillimesFormatter.format(customer.totalSpent),
-                  style: AppTypography.body.copyWith(
-                    color: context.appBrand,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (customer.segment != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: segmentBg,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                    ),
-                    child: Text(
-                      customer.segment!,
-                      style: AppTypography.caption.copyWith(
-                        color: segmentColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 10,
-                      ),
-                    ),
-                  )
-                else
-                  Text(
-                    '${customer.totalOrders} order${customer.totalOrders == 1 ? '' : 's'}',
-                    style: AppTypography.caption.copyWith(
-                      color: context.appTextTertiary,
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(width: AppSpacing.xs),
-            Icon(Icons.chevron_right_rounded,
-                size: 16, color: context.appTextTertiary),
+            SizedBox(width: context.spacing.space1),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: c.fg3),
           ],
         ),
       ),
@@ -513,7 +297,255 @@ class _CustomerCard extends StatelessWidget {
   }
 }
 
-// ── Sort tile ──────────────────────────────────────────────
+class _UserAvatar extends StatelessWidget {
+  const _UserAvatar({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () => context.push('/settings'),
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.brandTealTint08,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: context.typography.bodySmallMd.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.brandTeal,
+                ),
+              ),
+            ),
+            if (_mockHasUnreadNotifs)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: c.coral,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.surface0, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Search input
+// ════════════════════════════════════════════════════════════
+class _SearchInput extends StatelessWidget {
+  const _SearchInput({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: context.typography.input.copyWith(color: c.fg1),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: context.typography.input.copyWith(color: c.fg3),
+          prefixIcon: Icon(Icons.search_rounded, color: c.fg3, size: 20),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Segment filter strip
+// ════════════════════════════════════════════════════════════
+class _SegmentFilter extends StatelessWidget {
+  const _SegmentFilter({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 30,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _segmentCodes.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final code = _segmentCodes[i];
+          return _SegmentFilterChip(
+            label: _segmentLabel(code),
+            selected: selected == code,
+            onTap: () => onSelected(code),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SegmentFilterChip extends StatelessWidget {
+  const _SegmentFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? c.fg1 : c.surface2,
+          borderRadius: BorderRadius.circular(context.radius.radiusChip),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: context.typography.tabPill.copyWith(
+            color: selected ? c.surface0 : c.fg2,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Sort button + sheet
+// ════════════════════════════════════════════════════════════
+class _SortButton extends StatelessWidget {
+  const _SortButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return _ScaleTap(
+      pressedScale: 0.94,
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: c.surface2,
+          borderRadius: BorderRadius.circular(context.radius.radiusChip),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.sort_rounded, size: 16, color: c.fg1),
+      ),
+    );
+  }
+}
+
+class _SortSheet extends StatelessWidget {
+  const _SortSheet({required this.current});
+  final _SortOption current;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          context.spacing.space4,
+          context.spacing.space3,
+          context.spacing.space4,
+          context.spacing.space4,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.border1,
+                  borderRadius: BorderRadius.circular(
+                      context.radius.radiusFull),
+                ),
+              ),
+            ),
+            SizedBox(height: context.spacing.space4),
+            Text(
+              'Trier par',
+              style: context.typography.h4.copyWith(color: c.fg1),
+            ),
+            SizedBox(height: context.spacing.space2),
+            _SortTile(
+              label: 'Plus récente',
+              icon: Icons.access_time_rounded,
+              selected: current == _SortOption.recentOrder,
+              onTap: () => Navigator.pop(context, _SortOption.recentOrder),
+            ),
+            _SortTile(
+              label: 'Plus dépensé',
+              icon: Icons.payments_outlined,
+              selected: current == _SortOption.mostSpent,
+              onTap: () => Navigator.pop(context, _SortOption.mostSpent),
+            ),
+            _SortTile(
+              label: 'Plus de commandes',
+              icon: Icons.receipt_long_outlined,
+              selected: current == _SortOption.mostOrders,
+              onTap: () => Navigator.pop(context, _SortOption.mostOrders),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SortTile extends StatelessWidget {
   const _SortTile({
     required this.label,
@@ -529,31 +561,27 @@ class _SortTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final c = context.colors;
+    final fg = selected ? c.fg1 : c.fg3;
+    return _ScaleTap(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: EdgeInsets.symmetric(vertical: context.spacing.space3),
         child: Row(
           children: [
-            Icon(icon,
-                size: 18,
-                color: selected ? context.appBrand : context.appTextTertiary),
-            const SizedBox(width: AppSpacing.md),
+            Icon(icon, size: 18, color: fg),
+            SizedBox(width: context.spacing.space3),
             Expanded(
               child: Text(
                 label,
-                style: AppTypography.body.copyWith(
-                  color: selected
-                      ? context.appBrand
-                      : context.appTextPrimary,
+                style: context.typography.bodyMd.copyWith(
+                  color: selected ? c.fg1 : c.fg2,
                   fontWeight:
                       selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),
-            if (selected)
-              Icon(Icons.check_rounded,
-                  size: 18, color: context.appBrand),
+            if (selected) Icon(Icons.check_rounded, size: 18, color: c.fg1),
           ],
         ),
       ),
@@ -561,38 +589,184 @@ class _SortTile extends StatelessWidget {
   }
 }
 
-// ── Empty / Error / Skeleton ───────────────────────────────
+// ════════════════════════════════════════════════════════════
+// Customer list (single bordered card with internal dividers)
+// ════════════════════════════════════════════════════════════
+class _CustomerList extends StatelessWidget {
+  const _CustomerList({required this.customers});
+  final List<CustomerLean> customers;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface1,
+        border: Border.all(color: c.border1),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < customers.length; i++) ...[
+            _CustomerRow(customer: customers[i]),
+            if (i != customers.length - 1)
+              Container(
+                height: 1,
+                margin: const EdgeInsets.only(left: 60),
+                color: c.border1,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerRow extends StatelessWidget {
+  const _CustomerRow({required this.customer});
+  final CustomerLean customer;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final initial = customer.name.isNotEmpty
+        ? customer.name[0].toUpperCase()
+        : '?';
+
+    return _ScaleTap(
+      onTap: () => context.push('/customers/${customer.id}'),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: c.surface2,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: context.typography.h4.copyWith(
+                  color: c.fg1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            SizedBox(width: context.spacing.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    customer.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.h4.copyWith(color: c.fg1),
+                  ),
+                  SizedBox(height: context.spacing.space1),
+                  Text(
+                    customer.phone,
+                    style: context.typography.bodySmall
+                        .copyWith(color: c.fg3),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: context.spacing.space2),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  MillimesFormatter.format(customer.totalSpent),
+                  style: context.typography.bodyMd.copyWith(
+                    color: c.fg1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: context.spacing.space1),
+                if (customer.segment != null)
+                  SegmentChip(segment: customer.segment!)
+                else
+                  Text(
+                    customer.totalOrders == 1
+                        ? '1 commande'
+                        : '${customer.totalOrders} commandes',
+                    style: context.typography.bodySmall
+                        .copyWith(color: c.fg3),
+                  ),
+              ],
+            ),
+            SizedBox(width: context.spacing.space2),
+            Icon(Icons.chevron_right_rounded, size: 16, color: c.fg3),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Empty / no-results / error / skeleton
+// ════════════════════════════════════════════════════════════
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenHorizontal),
+        padding: EdgeInsets.all(context.spacing.space8),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: context.appBrandLight,
-                borderRadius: BorderRadius.circular(AppRadius.full),
-              ),
-              child: Icon(Icons.people_outline_rounded,
-                  size: 40, color: context.appBrand),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text('No clients yet',
-                style: AppTypography.h3
-                    .copyWith(color: context.appTextPrimary)),
-            const SizedBox(height: AppSpacing.xs),
+            Icon(Icons.people_outline_rounded, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
             Text(
-              'Clients are added automatically\nwhen you log orders',
-              style: AppTypography.body
-                  .copyWith(color: context.appTextSecondary),
+              'Aucun client',
+              style: context.typography.h3.copyWith(color: c.fg2),
+            ),
+            SizedBox(height: context.spacing.space1),
+            Text(
+              'Les clients sont ajoutés automatiquement lors de la création de commandes.',
               textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({required this.query});
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 32, color: c.fg3),
+            SizedBox(height: context.spacing.space2),
+            Text(
+              query.isEmpty
+                  ? 'Aucun résultat'
+                  : 'Aucun résultat pour « $query »',
+              textAlign: TextAlign.center,
+              style: context.typography.bodyMd.copyWith(color: c.fg3),
             ),
           ],
         ),
@@ -607,54 +781,166 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.wifi_off_rounded,
-              size: 48, color: context.appTextTertiary),
-          const SizedBox(height: AppSpacing.md),
-          Text('Could not load clients',
-              style: AppTypography.h4
-                  .copyWith(color: context.appTextPrimary)),
-          const SizedBox(height: AppSpacing.xl),
-          GestureDetector(
-            onTap: onRetry,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.xl, vertical: AppSpacing.md),
-              decoration: BoxDecoration(
-                color: context.appBrand,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-              child: Text('Try Again',
-                  style: AppTypography.body.copyWith(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w600)),
+      child: Padding(
+        padding: EdgeInsets.all(context.spacing.space8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 48, color: c.fg3),
+            SizedBox(height: context.spacing.space3),
+            Text(
+              'Impossible de charger les clients',
+              textAlign: TextAlign.center,
+              style: context.typography.h4.copyWith(color: c.fg1),
             ),
-          ),
-        ],
+            SizedBox(height: context.spacing.space4),
+            DidoButton.secondary(
+              label: 'Réessayer',
+              onPressed: onRetry,
+              fullWidth: false,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _CustomerListSkeleton extends StatelessWidget {
-  const _CustomerListSkeleton();
+class _ListSkeleton extends StatelessWidget {
+  const _ListSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenHorizontal),
-      itemCount: 6,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.xs),
-      itemBuilder: (_, __) => Container(
-        height: 68,
+    final c = context.colors;
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        context.spacing.screenEdge,
+        0,
+        context.spacing.screenEdge,
+        100,
+      ),
+      child: Container(
         decoration: BoxDecoration(
-          color: context.appSurfaceL2,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          color: c.surface1,
+          border: Border.all(color: c.border1),
+          borderRadius: BorderRadius.circular(context.radius.radiusCard),
         ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(6, (i) {
+            return Container(
+              height: 68,
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.space4,
+                vertical: context.spacing.space3,
+              ),
+              decoration: BoxDecoration(
+                border: i == 5
+                    ? null
+                    : Border(
+                        bottom: BorderSide(color: c.border1, width: 1),
+                      ),
+              ),
+              child: Row(
+                children: [
+                  _shimmer(
+                    context,
+                    width: 40,
+                    height: 40,
+                    radius: 9999,
+                  ),
+                  SizedBox(width: context.spacing.space3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _shimmer(context, width: 140, height: 14, radius: 4),
+                        SizedBox(height: context.spacing.space1),
+                        _shimmer(context, width: 90, height: 12, radius: 4),
+                      ],
+                    ),
+                  ),
+                  _shimmer(context, width: 60, height: 14, radius: 4),
+                ],
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _shimmer(
+    BuildContext context, {
+    required double width,
+    required double height,
+    required double radius,
+  }) {
+    final c = context.colors;
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+          duration: const Duration(milliseconds: 1500),
+          color: c.surface3,
+        );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Tap feedback (TODO(extract))
+// ════════════════════════════════════════════════════════════
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.98,
+  });
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.onTap == null
+          ? null
+          : (_) {
+              _set(true);
+              HapticFeedback.lightImpact();
+            },
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _set(false);
+              widget.onTap!();
+            },
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: context.motion.tap,
+        curve: context.motion.easeOut,
+        child: widget.child,
       ),
     );
   }

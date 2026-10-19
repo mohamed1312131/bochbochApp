@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'shared/providers/auth_state_provider.dart';
 import 'features/boutiques/presentation/boutique_providers.dart';
 import 'features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'features/onboarding/presentation/screens/onboarding_success_screen.dart';
 import 'features/boutiques/presentation/screens/edit_boutique_screen.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/register_screen.dart';
@@ -12,10 +14,8 @@ import 'features/auth/presentation/screens/forgot_password_screen.dart';
 import 'features/auth/presentation/screens/verify_otp_screen.dart';
 import 'features/auth/presentation/screens/new_password_screen.dart';
 import 'features/profit/presentation/screens/home_screen.dart';
+import 'features/stats/presentation/screens/stats_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
-import 'core/constants/app_colors.dart';
-import 'core/constants/app_typography.dart';
-import 'core/constants/app_border_radius.dart';
 import 'core/theme/app_theme_extension.dart';
 import 'features/products/presentation/screens/product_list_screen.dart';
 import 'features/products/presentation/screens/add_product_screen.dart';
@@ -27,11 +27,12 @@ import 'features/orders/presentation/screens/add_order_screen.dart';
 import 'features/orders/presentation/screens/order_detail_screen.dart';
 import 'features/customers/presentation/screens/customer_list_screen.dart';
 import 'features/customers/presentation/screens/customer_detail_screen.dart';
-import 'features/ai_studio/presentation/screens/ai_studio_hub_screen.dart';
-import 'features/ai_studio/presentation/screens/create_post_screen.dart';
-import 'features/ai_studio/presentation/screens/analysis_result_screen.dart';
-import 'features/ai_studio/domain/ai_studio_models.dart';
-import 'core/config/feature_flags.dart';
+import 'features/customers/presentation/screens/customer_edit_screen.dart';
+import 'features/stock/presentation/screens/categories_management_screen.dart';
+import 'features/stock/presentation/screens/dead_stock_list_screen.dart';
+import 'features/stock/presentation/screens/low_stock_list_screen.dart';
+import 'features/stock/presentation/screens/shrinkage_screen.dart';
+import 'features/stock/presentation/screens/stock_settings_screen.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -156,6 +157,42 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'onboarding',
         builder: (_, __) => const OnboardingScreen(),
       ),
+      GoRoute(
+        path: '/onboarding/success',
+        name: 'onboarding-success',
+        builder: (_, __) => const OnboardingSuccessScreen(),
+      ),
+
+      // Stock module sub-screens (chunk 6)
+      GoRoute(
+        path: '/stock/low',
+        name: 'stock-low',
+        builder: (_, __) => const LowStockListScreen(),
+      ),
+      GoRoute(
+        path: '/stock/dead',
+        name: 'stock-dead',
+        builder: (_, __) => const DeadStockListScreen(),
+      ),
+      GoRoute(
+        path: '/stock/shrinkage',
+        name: 'stock-shrinkage',
+        builder: (_, state) => ShrinkageScreen(
+          initialTab: int.tryParse(
+                  state.uri.queryParameters['tab'] ?? '0') ??
+              0,
+        ),
+      ),
+      GoRoute(
+        path: '/settings/stock',
+        name: 'settings-stock',
+        builder: (_, __) => const StockSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/categories',
+        name: 'settings-categories',
+        builder: (_, __) => const CategoriesManagementScreen(),
+      ),
 
       // Boutique edit (Stage 5F)
       GoRoute(
@@ -164,43 +201,58 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const EditBoutiqueScreen(),
       ),
 
-      // Paymee deep-link landings (placeholder — real screens later)
+      // Full-screen Add Order flow (no bottom nav)
       GoRoute(
-        path: '/payment/return',
-        name: 'payment-return',
-        builder: (context, state) => _PaymentReturnPlaceholder(
-          paymentId: state.uri.queryParameters['paymentId'] ?? '',
+        path: '/orders/add',
+        name: 'add-order',
+        builder: (_, __) => const AddOrderScreen(),
+      ),
+
+      // Full-screen Products flows (no bottom nav)
+      GoRoute(
+        path: '/products/add',
+        name: 'add-product',
+        builder: (_, __) => const AddProductScreen(),
+      ),
+      GoRoute(
+        path: '/products/:id',
+        name: 'product-detail',
+        builder: (_, state) => ProductDetailScreen(
+          productId: state.pathParameters['id']!,
         ),
       ),
       GoRoute(
-        path: '/payment/cancel',
-        name: 'payment-cancel',
-        builder: (context, state) => _PaymentCancelPlaceholder(
-          paymentId: state.uri.queryParameters['paymentId'] ?? '',
+        path: '/products/:id/edit',
+        name: 'product-edit',
+        builder: (_, state) => EditProductScreen(
+          product: state.extra as Product,
         ),
       ),
 
-      // Full-screen AI Studio flow (no bottom nav)
-      if (FeatureFlags.aiEnabled)
-        GoRoute(
-          path: '/ai-studio/create-post',
-          name: 'create-post',
-          builder: (_, __) => const CreatePostScreen(),
-          routes: [
-            GoRoute(
-              path: 'result',
-              name: 'analysis-result',
-              builder: (context, state) {
-                final extra = state.extra as Map<String, dynamic>;
-                return AnalysisResultScreen(
-                  result: extra['result'] as AiAnalysisResult,
-                  photoUrls: List<String>.from(extra['photoUrls'] as List),
-                  sessionId: extra['sessionId'] as String? ?? '',
-                );
-              },
-            ),
-          ],
+      // Full-screen Order detail (no bottom nav)
+      GoRoute(
+        path: '/orders/:id',
+        name: 'order-detail',
+        builder: (_, state) => OrderDetailScreen(
+          orderId: state.pathParameters['id']!,
         ),
+      ),
+
+      // Full-screen Customers flows (no bottom nav)
+      GoRoute(
+        path: '/customers/:id',
+        name: 'customer-detail',
+        builder: (_, state) => CustomerDetailScreen(
+          customerId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/customers/:id/edit',
+        name: 'customer-edit',
+        builder: (_, state) => CustomerEditScreen(
+          customerId: state.pathParameters['id']!,
+        ),
+      ),
 
       // Main shell with bottom nav
       ShellRoute(
@@ -215,68 +267,21 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/products',
             name: 'products',
             builder: (_, __) => const ProductListScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                name: 'add-product',
-                builder: (_, __) => const AddProductScreen(),
-              ),
-              GoRoute(
-                path: ':id',
-                name: 'product-detail',
-                builder: (_, state) => ProductDetailScreen(
-                  productId: state.pathParameters['id']!,
-                ),
-                routes: [
-                  GoRoute(
-                    path: 'edit',
-                    name: 'edit-product',
-                    builder: (context, state) => EditProductScreen(
-                      product: state.extra as Product,
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ),
           GoRoute(
             path: '/orders',
             name: 'orders',
             builder: (_, __) => const OrderListScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                name: 'add-order',
-                builder: (_, __) => const AddOrderScreen(),
-              ),
-              GoRoute(
-                path: ':id',
-                name: 'order-detail',
-                builder: (_, state) => OrderDetailScreen(
-                  orderId: state.pathParameters['id']!,
-                ),
-              ),
-            ],
           ),
-          if (FeatureFlags.aiEnabled)
-            GoRoute(
-              path: '/ai-studio',
-              name: 'ai-studio',
-              builder: (_, __) => const AiStudioHubScreen(),
-            ),
           GoRoute(
             path: '/customers',
             name: 'customers',
             builder: (_, __) => const CustomerListScreen(),
-            routes: [
-              GoRoute(
-                path: ':id',
-                name: 'customer-detail',
-                builder: (_, state) => CustomerDetailScreen(
-                  customerId: state.pathParameters['id']!,
-                ),
-              ),
-            ],
+          ),
+          GoRoute(
+            path: '/stats',
+            name: 'stats',
+            builder: (_, __) => const StatsScreen(),
           ),
         ],
       ),
@@ -300,87 +305,66 @@ class _MainShell extends StatelessWidget {
 class _DidoBottomNav extends StatelessWidget {
   const _DidoBottomNav();
 
-  int _locationToIndex(String location) {
-    if (location.startsWith('/home')) return 0;
-    if (location.startsWith('/orders')) return 1;
-    if (location.startsWith('/products')) return 3;
-    if (location.startsWith('/customers')) return 4;
+  int _locationToIndex(String loc) {
+    if (loc.startsWith('/home')) return 0;
+    if (loc.startsWith('/orders')) return 1;
+    if (loc.startsWith('/products')) return 2;
+    if (loc.startsWith('/customers')) return 3;
+    if (loc.startsWith('/stats')) return 4;
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final location = GoRouterState.of(context).matchedLocation;
     final currentIndex = _locationToIndex(location);
 
     return Container(
       decoration: BoxDecoration(
-        color: context.appSurface,
-        border: Border(
-          top: BorderSide(color: context.appBorder, width: 1),
-        ),
+        color: c.surface1,
+        border: Border(top: BorderSide(color: c.border1, width: 1)),
       ),
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 60,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _NavItem(
-                icon: Icons.home_rounded,
-                label: 'Home',
-                isActive: currentIndex == 0,
-                onTap: () => context.go('/home'),
-              ),
-              _NavItem(
-                icon: Icons.receipt_long_rounded,
-                label: 'Orders',
-                isActive: currentIndex == 1,
-                onTap: () => context.go('/orders'),
-              ),
-
-              // Center + FAB
-              if (FeatureFlags.aiEnabled)
-                GestureDetector(
-                  onTap: () => context.go('/ai-studio'),
-                  child: Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.brand,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x3305687B),
-                          blurRadius: 12,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome_rounded,
-                      color: AppColors.white,
-                      size: 24,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: 52, height: 52),
-
-              _NavItem(
-                icon: Icons.grid_view_rounded,
-                label: 'Products',
-                isActive: currentIndex == 3,
-                onTap: () => context.go('/products'),
-              ),
-              _NavItem(
-                icon: Icons.person_rounded,
-                label: 'Clients',
-                isActive: currentIndex == 4,
-                onTap: () => context.go('/customers'),
-              ),
-            ],
+          height: 64,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                _NavItem(
+                  icon: Icons.home_rounded,
+                  label: 'Accueil',
+                  isActive: currentIndex == 0,
+                  onTap: () => context.go('/home'),
+                ),
+                _NavItem(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Commandes',
+                  isActive: currentIndex == 1,
+                  onTap: () => context.go('/orders'),
+                ),
+                _NavItem(
+                  icon: Icons.grid_view_rounded,
+                  label: 'Produits',
+                  isActive: currentIndex == 2,
+                  onTap: () => context.go('/products'),
+                ),
+                _NavItem(
+                  icon: Icons.person_rounded,
+                  label: 'Clients',
+                  isActive: currentIndex == 3,
+                  onTap: () => context.go('/customers'),
+                ),
+                _NavItem(
+                  icon: Icons.bar_chart_rounded,
+                  label: 'Stats',
+                  isActive: currentIndex == 4,
+                  onTap: () => context.go('/stats'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -388,29 +372,7 @@ class _DidoBottomNav extends StatelessWidget {
   }
 }
 
-class _PaymentReturnPlaceholder extends StatelessWidget {
-  const _PaymentReturnPlaceholder({required this.paymentId});
-  final String paymentId;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Payment return: $paymentId\n(placeholder)')),
-    );
-  }
-}
-
-class _PaymentCancelPlaceholder extends StatelessWidget {
-  const _PaymentCancelPlaceholder({required this.paymentId});
-  final String paymentId;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Payment cancel: $paymentId\n(placeholder)')),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   const _NavItem({
     required this.icon,
     required this.label,
@@ -424,30 +386,43 @@ class _NavItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 64,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isActive ? AppColors.brand : AppColors.textTertiary,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: AppTypography.caption.copyWith(
-                color: isActive ? AppColors.brand : AppColors.textTertiary,
-                fontWeight:
-                    isActive ? FontWeight.w600 : FontWeight.w400,
+    final c = context.colors;
+    final color = widget.isActive ? c.fg1 : c.fg3;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) {
+          setState(() => _pressed = true);
+          HapticFeedback.lightImpact();
+        },
+        onTapUp: (_) {
+          setState(() => _pressed = false);
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedOpacity(
+          opacity: _pressed ? 0.6 : 1.0,
+          duration: context.motion.tap,
+          curve: context.motion.easeOut,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 22, color: color),
+              SizedBox(height: context.spacing.space1),
+              Text(
+                widget.label,
+                style: context.typography.tabPill.copyWith(color: color),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

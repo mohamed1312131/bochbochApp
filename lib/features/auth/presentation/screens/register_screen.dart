@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_spacing.dart';
-import '../../../../core/constants/app_typography.dart';
-import '../../../../core/constants/app_border_radius.dart';
-import '../../../../core/theme/app_theme_extension.dart';
+
 import '../../../../core/config/feature_flags.dart';
+import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../shared/widgets/dido_button.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/google_signin_button.dart';
 
@@ -46,18 +44,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final registerState = ref.watch(registerProvider);
     final isLoading = registerState.status == RegisterStatus.loading;
 
-ref.listen(registerProvider, (_, next) {
-  if (next.status == RegisterStatus.success) {
-    context.go('/auth/verify-email');
-  }
-});
+    ref.listen(registerProvider, (_, next) {
+      if (next.status == RegisterStatus.success) {
+        context.go('/auth/verify-email');
+      }
+    });
 
-    // Google-login plumbing only matters when the flag is on. Without
-    // it the button is hidden and loginProvider can never fire from
-    // this screen, so the listener and watch would be dead code.
     final isGoogleLoading = FeatureFlags.googleSigninEnabled
         ? ref.watch(loginProvider).status == LoginStatus.loading
         : false;
@@ -70,283 +66,135 @@ ref.listen(registerProvider, (_, next) {
     }
 
     return Scaffold(
-      backgroundColor: context.appBackground,
+      backgroundColor: c.surface0,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenHorizontal,
-          ),
+          padding:
+              EdgeInsets.symmetric(horizontal: context.spacing.screenEdge),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: AppSpacing.xxxl),
-
-                // Back button
-                GestureDetector(
-                  onTap: () => context.go('/auth/login'),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: context.appSurfaceL2,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                    ),
-                    child: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 16,
-                      color: context.appTextPrimary,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: AppSpacing.xl),
-
-                // Title
+                SizedBox(height: context.spacing.space8),
+                _BackButton(onTap: () => context.go('/auth/login')),
+                SizedBox(height: context.spacing.space6),
                 Text(
-                  'Create account',
-                  style: AppTypography.h1.copyWith(
-                    color: context.appTextPrimary,
-                  ),
+                  'Créer un compte',
+                  style: context.typography.h1.copyWith(color: c.fg1),
                 ),
-                const SizedBox(height: AppSpacing.xs),
+                SizedBox(height: context.spacing.space2),
                 Text(
-                  'Start your free 30-day trial',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextSecondary,
-                  ),
+                  'Commencez votre essai gratuit de 30 jours',
+                  style: context.typography.bodyMd.copyWith(color: c.fg2),
                 ),
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                // Full name
-                Text(
-                  'Full Name',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                SizedBox(height: context.spacing.space6),
+                _FieldLabel(text: 'Nom complet'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _nameController,
+                  hint: 'Amira Ben Ali',
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Le nom est requis';
+                    }
+                    if (v.trim().length < 2) return 'Nom trop court';
+                    return null;
+                  },
                 ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _nameController,
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.words,
-                    style: AppTypography.body,
-                    decoration: const InputDecoration(
-                      hintText: 'Amira Ben Ali',
+                SizedBox(height: context.spacing.space4),
+                _FieldLabel(text: 'Email'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _emailController,
+                  hint: 'votre@email.com',
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'L\'email est requis';
+                    }
+                    if (!v.contains('@')) return 'Entrez un email valide';
+                    return null;
+                  },
+                ),
+                SizedBox(height: context.spacing.space4),
+                _FieldLabel(text: 'Mot de passe'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _passwordController,
+                  hint: '••••••••',
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.next,
+                  suffixIcon: _ObscureToggle(
+                    obscured: _obscurePassword,
+                    onPressed: () => setState(
+                      () => _obscurePassword = !_obscurePassword,
                     ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'Full name is required';
-                      }
-                      if (v.trim().length < 2) return 'Name too short';
-                      return null;
-                    },
                   ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Le mot de passe est requis';
+                    }
+                    if (v.length < 8) return 'Minimum 8 caractères';
+                    return null;
+                  },
                 ),
-
-                const SizedBox(height: AppSpacing.md),
-
-                // Email
-                Text(
-                  'Email',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autocorrect: false,
-                    style: AppTypography.body,
-                    decoration: const InputDecoration(
-                      hintText: 'your@email.com',
+                SizedBox(height: context.spacing.space4),
+                _FieldLabel(text: 'Confirmer le mot de passe'),
+                SizedBox(height: context.spacing.space2),
+                _AuthField(
+                  controller: _confirmPasswordController,
+                  hint: '••••••••',
+                  obscureText: _obscureConfirm,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
+                  suffixIcon: _ObscureToggle(
+                    obscured: _obscureConfirm,
+                    onPressed: () => setState(
+                      () => _obscureConfirm = !_obscureConfirm,
                     ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Email is required';
-                      if (!v.contains('@')) return 'Enter a valid email';
-                      return null;
-                    },
                   ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Confirmez votre mot de passe';
+                    }
+                    if (v != _passwordController.text) {
+                      return 'Les mots de passe ne correspondent pas';
+                    }
+                    return null;
+                  },
                 ),
-
-                const SizedBox(height: AppSpacing.md),
-
-                // Password
-                Text(
-                  'Password',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.next,
-                    style: AppTypography.body,
-                    decoration: InputDecoration(
-                      hintText: '••••••••',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: context.appTextTertiary,
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Password is required';
-                      if (v.length < 8) return 'Minimum 8 characters';
-                      return null;
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: AppSpacing.md),
-
-                // Confirm password
-                Text(
-                  'Confirm Password',
-                  style: AppTypography.body.copyWith(
-                    color: context.appTextPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 52,
-                  child: TextFormField(
-                    controller: _confirmPasswordController,
-                    obscureText: _obscureConfirm,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(),
-                    style: AppTypography.body,
-                    decoration: InputDecoration(
-                      hintText: '••••••••',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirm
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: context.appTextTertiary,
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureConfirm = !_obscureConfirm,
-                        ),
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) {
-                        return 'Please confirm your password';
-                      }
-                      if (v != _passwordController.text) {
-                        return 'Passwords do not match';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-
-                // Error
                 if (registerState.error != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: AppColors.errorBg,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                    child: Text(
-                      registerState.error!,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ),
+                  SizedBox(height: context.spacing.space3),
+                  _ErrorBanner(message: registerState.error!),
                 ],
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                // Register button
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.appBrand,
-                      foregroundColor: AppColors.white,
-                      disabledBackgroundColor:
-                          context.appBrand.withValues(alpha: 0.3),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                      ),
-                    ),
-                    child: isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.white,
-                            ),
-                          )
-                        : Text(
-                            'Create Account',
-                            style: AppTypography.bodyLarge.copyWith(
-                              color: AppColors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
+                SizedBox(height: context.spacing.space6),
+                DidoButton.primary(
+                  label: 'Créer le compte',
+                  loading: isLoading,
+                  onPressed: _submit,
                 ),
-
-                const SizedBox(height: AppSpacing.xl),
-
+                SizedBox(height: context.spacing.space6),
                 if (FeatureFlags.googleSigninEnabled) ...[
-                  // Divider
                   Row(
                     children: [
-                      Expanded(child: Divider(color: context.appBorder)),
+                      Expanded(child: Divider(color: c.border1)),
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.sm,
-                        ),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: context.spacing.space3),
                         child: Text(
                           'Ou se connecter avec',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: context.appTextTertiary,
-                          ),
+                          style: context.typography.bodySmall
+                              .copyWith(color: c.fg3),
                         ),
                       ),
-                      Expanded(child: Divider(color: context.appBorder)),
+                      Expanded(child: Divider(color: c.border1)),
                     ],
                   ),
-
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // Google sign-in button
+                  SizedBox(height: context.spacing.space4),
                   GoogleSignInButton(
                     onPressed: (isLoading || isGoogleLoading)
                         ? null
@@ -354,25 +202,21 @@ ref.listen(registerProvider, (_, next) {
                             .read(loginProvider.notifier)
                             .loginWithGoogle(),
                   ),
-
-                  const SizedBox(height: AppSpacing.xl),
+                  SizedBox(height: context.spacing.space6),
                 ],
-
-                // Login link
                 Center(
                   child: GestureDetector(
                     onTap: () => context.go('/auth/login'),
                     child: RichText(
                       text: TextSpan(
-                        text: 'Already have an account? ',
-                        style: AppTypography.body.copyWith(
-                          color: context.appTextSecondary,
-                        ),
+                        text: 'Déjà un compte ? ',
+                        style: context.typography.bodyMd
+                            .copyWith(color: c.fg2),
                         children: [
                           TextSpan(
-                            text: 'Sign In',
-                            style: AppTypography.body.copyWith(
-                              color: context.appBrand,
+                            text: 'Se connecter',
+                            style: context.typography.bodyMd.copyWith(
+                              color: c.fg1,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -381,12 +225,155 @@ ref.listen(registerProvider, (_, next) {
                     ),
                   ),
                 ),
-
-                const SizedBox(height: AppSpacing.xl),
+                SizedBox(height: context.spacing.space6),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Shared auth pieces (inlined per file — TODO(extract))
+// ════════════════════════════════════════════════════════════
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration:
+            BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Icon(Icons.arrow_back_ios_new_rounded,
+            size: 16, color: c.fg1),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: context.typography.bodyMd.copyWith(
+        color: context.colors.fg1,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+class _AuthField extends StatelessWidget {
+  const _AuthField({
+    required this.controller,
+    required this.hint,
+    this.keyboardType,
+    this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
+    this.obscureText = false,
+    this.suffixIcon,
+    this.validator,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final TextCapitalization textCapitalization;
+  final bool obscureText;
+  final Widget? suffixIcon;
+  final FormFieldValidator<String>? validator;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final radius = BorderRadius.circular(context.radius.radiusInput);
+    OutlineInputBorder b(Color color, double width) => OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: color, width: width));
+
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      textCapitalization: textCapitalization,
+      obscureText: obscureText,
+      autocorrect: !obscureText,
+      onFieldSubmitted: onSubmitted,
+      validator: validator,
+      style: context.typography.input.copyWith(color: c.fg1),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: context.typography.input.copyWith(color: c.fg3),
+        filled: true,
+        fillColor: c.surface1,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space3,
+          vertical: 14,
+        ),
+        isDense: true,
+        border: b(c.border1, 1),
+        enabledBorder: b(c.border1, 1),
+        focusedBorder: b(c.fg1, 1.5),
+        errorBorder: b(c.red, 1),
+        focusedErrorBorder: b(c.red, 1.5),
+        errorStyle: context.typography.bodySmall.copyWith(color: c.redFg),
+        suffixIcon: suffixIcon,
+      ),
+    );
+  }
+}
+
+class _ObscureToggle extends StatelessWidget {
+  const _ObscureToggle({required this.obscured, required this.onPressed});
+  final bool obscured;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        obscured ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+        color: context.colors.fg3,
+        size: 20,
+      ),
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.spacing.space3),
+      decoration: BoxDecoration(
+        color: c.redTint12,
+        borderRadius: BorderRadius.circular(context.radius.radiusInput),
+      ),
+      child: Text(
+        message,
+        style: context.typography.bodySmall.copyWith(color: c.redFg),
       ),
     );
   }

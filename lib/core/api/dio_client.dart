@@ -11,16 +11,28 @@ import 'auth_interceptor.dart';
 
 class DioClient {
   static DioClient? _instance;
+  // Memoize the in-flight init Future (H13 fix). Two parallel
+  // `getInstance()` callers used to both observe `_instance == null`,
+  // both construct a `DioClient._()`, both run `_init` — leaving one
+  // orphaned Dio with stale interceptors. Memoizing the Future itself
+  // gives all callers the SAME init result.
+  static Future<DioClient>? _initFuture;
+
   late final Dio _dio;
   late final PersistCookieJar _cookieJar;
 
   DioClient._();
 
-  static Future<DioClient> getInstance() async {
-    if (_instance != null) return _instance!;
-    _instance = DioClient._();
-    await _instance!._init();
-    return _instance!;
+  static Future<DioClient> getInstance() {
+    if (_instance != null) return Future.value(_instance!);
+    return _initFuture ??= _createAndInit();
+  }
+
+  static Future<DioClient> _createAndInit() async {
+    final client = DioClient._();
+    await client._init();
+    _instance = client;
+    return client;
   }
 
   Future<void> _init() async {
