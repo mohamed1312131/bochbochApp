@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="DIDO — la gestion simple et rentable des boutiques de social commerce.">
+  <meta name="theme-color" content="#05687B">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="DIDO">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>DIDO — Démo interactive</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { background: #f3f6f6; margin: 0; min-height: 100%; overflow: hidden; }
+    #dido-loader {
+      align-items: center; background: #f3f6f6; color: #153437; display: flex;
+      flex-direction: column; font-family: Inter, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif; gap: 12px; inset: 0; justify-content: center;
+      position: fixed; z-index: 9999;
+    }
+    #dido-loader strong { color: #05687B; font-size: 32px; letter-spacing: .16em; }
+    #dido-loader span { color: #688083; font-size: 13px; }
+    #dido-loader i {
+      animation: dido-pulse 1.1s ease-in-out infinite; background: #05687B;
+      border-radius: 999px; display: block; height: 5px; margin-top: 8px; width: 46px;
+    }
+    @keyframes dido-pulse {
+      0%, 100% { opacity: .25; transform: scaleX(.55); }
+      50% { opacity: 1; transform: scaleX(1); }
+    }
+  </style>
+</head>
+<body>
+  <div id="dido-loader" role="status" aria-label="Chargement de DIDO">
+    <strong>DIDO</strong>
+    <span>Préparation de votre boutique…</span>
+    <i></i>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      document.getElementById('dido-loader')?.remove();
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

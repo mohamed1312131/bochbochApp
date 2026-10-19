@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +8,7 @@ import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
 import '../../../../shared/widgets/dido_bottom_sheet.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../../shared/widgets/dido_scale_tap.dart';
 import '../../../stock/domain/stock_models.dart';
 import '../../../stock/presentation/providers/stock_provider.dart';
@@ -26,8 +24,7 @@ class EditProductScreen extends ConsumerStatefulWidget {
   final Product product;
 
   @override
-  ConsumerState<EditProductScreen> createState() =>
-      _EditProductScreenState();
+  ConsumerState<EditProductScreen> createState() => _EditProductScreenState();
 }
 
 class _EditProductScreenState extends ConsumerState<EditProductScreen> {
@@ -64,8 +61,7 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
     super.initState();
     final p = widget.product;
     _nameController = TextEditingController(text: p.name);
-    _descriptionController =
-        TextEditingController(text: p.description ?? '');
+    _descriptionController = TextEditingController(text: p.description ?? '');
     _costPriceController = TextEditingController(
       text: MillimesFormatter.toTnd(p.baseCostPrice).toStringAsFixed(0),
     );
@@ -77,19 +73,19 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
     _selectedCategoryId = p.categoryId;
     _selectedCategoryName = p.categoryId != null ? p.category : null;
 
-    final firstActive =
-        p.variants.where((v) => v.isActive).cast<ProductVariant?>().firstWhere(
-              (_) => true,
-              orElse: () => null,
-            );
+    final firstActive = p.variants
+        .where((v) => v.isActive)
+        .cast<ProductVariant?>()
+        .firstWhere((_) => true, orElse: () => null);
     _lowStockThreshold = firstActive?.lowStockThreshold ?? 3;
     _backorderEnabled = firstActive?.backorderEnabled ?? false;
 
     _isBundle = p.effectiveIsBundle;
     if (_isBundle) {
       _isBundleLoading = true;
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _loadBundleComponents());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _loadBundleComponents(),
+      );
     }
 
     _nameController.addListener(_rebuild);
@@ -104,13 +100,15 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
           .getBundle(widget.product.id);
       if (!mounted) return;
       final drafts = bundle.components
-          .map((c) => BundleComponentDraft(
-                variantId: c.componentVariantId,
-                productName: c.componentProductName,
-                sku: c.componentSku,
-                componentCost: c.componentCost,
-                qtyPerBundle: c.qtyPerBundle,
-              ))
+          .map(
+            (c) => BundleComponentDraft(
+              variantId: c.componentVariantId,
+              productName: c.componentProductName,
+              sku: c.componentSku,
+              componentCost: c.componentCost,
+              qtyPerBundle: c.qtyPerBundle,
+            ),
+          )
           .toList();
       setState(() {
         _bundleInitial = drafts;
@@ -161,12 +159,15 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
             DidoScaleTap(
               onTap: () => Navigator.of(context).pop(categories[i]),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 14,
+                ),
                 child: Text(
                   categories[i].name,
-                  style: context.typography.body
-                      .copyWith(color: context.colors.fg1),
+                  style: context.typography.body.copyWith(
+                    color: context.colors.fg1,
+                  ),
                 ),
               ),
             ),
@@ -202,25 +203,23 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
   }
 
   double get _profitMargin {
-    final cost = double.tryParse(
-            _costPriceController.text.replaceAll(',', '.')) ??
-        0;
-    final sell = double.tryParse(
-            _sellPriceController.text.replaceAll(',', '.')) ??
-        0;
+    final cost =
+        double.tryParse(_costPriceController.text.replaceAll(',', '.')) ?? 0;
+    final sell =
+        double.tryParse(_sellPriceController.text.replaceAll(',', '.')) ?? 0;
     return sell - cost;
   }
 
   double get _profitPct {
-    final sell = double.tryParse(
-            _sellPriceController.text.replaceAll(',', '.')) ??
-        0;
+    final sell =
+        double.tryParse(_sellPriceController.text.replaceAll(',', '.')) ?? 0;
     if (sell <= 0) return 0;
     return (_profitMargin / sell) * 100;
   }
 
   bool get _canSave {
-    final commonOk = _nameController.text.trim().isNotEmpty &&
+    final commonOk =
+        _nameController.text.trim().isNotEmpty &&
         _costPriceController.text.trim().isNotEmpty &&
         _sellPriceController.text.trim().isNotEmpty;
     if (!commonOk) return false;
@@ -269,7 +268,8 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        category: _selectedCategoryName ??
+        category:
+            _selectedCategoryName ??
             (freeText.isEmpty ? null : freeText.toLowerCase()),
         categoryId: _selectedCategoryId,
         lowStockThreshold: _isBundle ? null : _lowStockThreshold,
@@ -277,19 +277,18 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
       );
 
       if (_isBundle) {
-        await ref.read(stockRepositoryProvider).upsertBundle(
-              widget.product.id,
-              [
-                for (final c in _bundleComponents)
-                  BundleComponent(
-                    componentVariantId: c.variantId,
-                    componentProductName: c.productName,
-                    componentSku: c.sku,
-                    qtyPerBundle: c.qtyPerBundle,
-                    componentCost: c.componentCost,
-                  ),
-              ],
-            );
+        await ref
+            .read(stockRepositoryProvider)
+            .upsertBundle(widget.product.id, [
+              for (final c in _bundleComponents)
+                BundleComponent(
+                  componentVariantId: c.variantId,
+                  componentProductName: c.productName,
+                  componentSku: c.sku,
+                  qtyPerBundle: c.qtyPerBundle,
+                  componentCost: c.componentCost,
+                ),
+            ]);
       }
 
       if (_newImage != null) {
@@ -379,18 +378,21 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                                   suffix: 'TND',
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
-                                          decimal: true),
+                                        decimal: true,
+                                      ),
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
-                                        RegExp(r'[\d,.]')),
+                                      RegExp(r'[\d,.]'),
+                                    ),
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
                                       return 'Requis';
                                     }
                                     if (double.tryParse(
-                                            v.replaceAll(',', '.')) ==
+                                          v.replaceAll(',', '.'),
+                                        ) ==
                                         null) {
                                       return 'Invalide';
                                     }
@@ -413,22 +415,29 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                                   suffix: 'TND',
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
-                                          decimal: true),
+                                        decimal: true,
+                                      ),
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
-                                        RegExp(r'[\d,.]')),
+                                      RegExp(r'[\d,.]'),
+                                    ),
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
                                       return 'Requis';
                                     }
                                     final sell = double.tryParse(
-                                        v.replaceAll(',', '.'));
+                                      v.replaceAll(',', '.'),
+                                    );
                                     if (sell == null) return 'Invalide';
-                                    final cost = double.tryParse(
-                                            _costPriceController.text
-                                                .replaceAll(',', '.')) ??
+                                    final cost =
+                                        double.tryParse(
+                                          _costPriceController.text.replaceAll(
+                                            ',',
+                                            '.',
+                                          ),
+                                        ) ??
                                         0;
                                     if (sell <= cost) {
                                       return "Doit être > prix d'achat";
@@ -443,10 +452,7 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                       ),
                       if (_profitMargin > 0) ...[
                         SizedBox(height: context.spacing.space3),
-                        _ProfitPreview(
-                          margin: _profitMargin,
-                          pct: _profitPct,
-                        ),
+                        _ProfitPreview(margin: _profitMargin, pct: _profitPct),
                       ],
                       if (!_isBundle) ...[
                         SizedBox(height: context.spacing.space6),
@@ -464,8 +470,9 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                         Text(
                           "Tu seras alerté(e) quand le stock disponible "
                           "tombe à ce niveau.",
-                          style: context.typography.caption
-                              .copyWith(color: c.fg3),
+                          style: context.typography.caption.copyWith(
+                            color: c.fg3,
+                          ),
                         ),
                         SizedBox(height: context.spacing.space6),
                         StockSettingsBackorderCard(
@@ -480,22 +487,21 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                         SizedBox(height: context.spacing.space6),
                         if (_isBundleLoading)
                           Padding(
-                            padding:
-                                EdgeInsets.all(context.spacing.space4),
+                            padding: EdgeInsets.all(context.spacing.space4),
                             child: const Center(
                               child: SizedBox(
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2),
+                                  strokeWidth: 2,
+                                ),
                               ),
                             ),
                           )
                         else
                           BundleComponentsSection(
                             initialComponents: _bundleInitial ?? const [],
-                            onChanged: (next) =>
-                                _bundleComponents = next,
+                            onChanged: (next) => _bundleComponents = next,
                           ),
                       ],
                       SizedBox(height: context.spacing.space6),
@@ -566,8 +572,11 @@ class _Header extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: c.fg1),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: c.fg1,
+              ),
             ),
           ),
           SizedBox(width: context.spacing.space3),
@@ -619,15 +628,27 @@ class _PhotoPicker extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (newImage != null)
-                    Image.file(File(newImage!.path), fit: BoxFit.cover)
+                    FutureBuilder<Uint8List>(
+                      future: newImage!.readAsBytes(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                      },
+                    )
                   else
-                    CachedNetworkImage(
+                    DidoProductImage(
                       imageUrl: existingImageUrl!,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => Center(
-                        child: Icon(Icons.broken_image_outlined,
-                            color: c.fg3, size: 32),
+                      errorBuilder: (_) => Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: c.fg3,
+                          size: 32,
+                        ),
                       ),
                     ),
                   Positioned(
@@ -635,16 +656,20 @@ class _PhotoPicker extends StatelessWidget {
                     right: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: c.fg1,
                         borderRadius: BorderRadius.circular(
-                            context.radius.radiusInput),
+                          context.radius.radiusInput,
+                        ),
                       ),
                       child: Text(
                         'Changer la photo',
-                        style: context.typography.bodySmallMd
-                            .copyWith(color: c.surface0),
+                        style: context.typography.bodySmallMd.copyWith(
+                          color: c.surface0,
+                        ),
                       ),
                     ),
                   ),
@@ -661,8 +686,11 @@ class _PhotoPicker extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.add_a_photo_outlined,
-                        color: c.fg2, size: 24),
+                    child: Icon(
+                      Icons.add_a_photo_outlined,
+                      color: c.fg2,
+                      size: 24,
+                    ),
                   ),
                   SizedBox(height: context.spacing.space2),
                   Text(
@@ -728,8 +756,7 @@ class _PhotoSourceSheet extends StatelessWidget {
                     child: _PhotoSourceTile(
                       icon: Icons.camera_alt_rounded,
                       label: 'Appareil photo',
-                      onTap: () =>
-                          Navigator.pop(context, ImageSource.camera),
+                      onTap: () => Navigator.pop(context, ImageSource.camera),
                     ),
                   ),
                   SizedBox(width: context.spacing.space3),
@@ -737,8 +764,7 @@ class _PhotoSourceSheet extends StatelessWidget {
                     child: _PhotoSourceTile(
                       icon: Icons.photo_library_rounded,
                       label: 'Galerie',
-                      onTap: () =>
-                          Navigator.pop(context, ImageSource.gallery),
+                      onTap: () => Navigator.pop(context, ImageSource.gallery),
                     ),
                   ),
                 ],
@@ -1021,7 +1047,6 @@ class _ScaleTapState extends State<_ScaleTap> {
     );
   }
 }
-
 
 class _CategoryDropdown extends StatelessWidget {
   const _CategoryDropdown({required this.selectedName, required this.onTap});

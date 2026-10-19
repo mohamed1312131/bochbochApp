@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../domain/order_models.dart';
 import '../../domain/partial_fulfill_models.dart';
 import '../providers/order_provider.dart';
@@ -60,8 +61,10 @@ class _PartialFulfillConfirmScreenState
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    ref.listen<SubmitPartialFulfillState>(submitPartialFulfillProvider,
-        (prev, next) {
+    ref.listen<SubmitPartialFulfillState>(submitPartialFulfillProvider, (
+      prev,
+      next,
+    ) {
       if (prev?.status == next.status) return;
       if (next.status == SubmitPartialFulfillStatus.success) {
         final messenger = ScaffoldMessenger.of(context);
@@ -119,10 +122,7 @@ class _PartialFulfillConfirmScreenState
                 if (widget.shippedItems.isNotEmpty) ...[
                   _SectionLabel(text: 'EXPÉDIÉ MAINTENANT'),
                   SizedBox(height: context.spacing.space2),
-                  _ItemsCard(
-                    items: widget.shippedItems,
-                    badgeLabel: null,
-                  ),
+                  _ItemsCard(items: widget.shippedItems, badgeLabel: null),
                   SizedBox(height: context.spacing.space5),
                 ],
                 if (widget.backorderedItems.isNotEmpty) ...[
@@ -148,12 +148,13 @@ class _PartialFulfillConfirmScreenState
             loading: loading,
             onSubmit: loading
                 ? null
-                : () =>
-                    ref.read(submitPartialFulfillProvider.notifier).submit(
-                          orderId: widget.orderId,
-                          action: PartialFulfillAction.shipNow,
-                          estimatedRestockDate: _restockDate,
-                        ),
+                : () => ref
+                      .read(submitPartialFulfillProvider.notifier)
+                      .submit(
+                        orderId: widget.orderId,
+                        action: PartialFulfillAction.shipNow,
+                        estimatedRestockDate: _restockDate,
+                      ),
           ),
         ],
       ),
@@ -180,10 +181,7 @@ class _SuccessCard extends StatelessWidget {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: c.greenFg,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: c.greenFg, shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Icon(Icons.check, size: 28, color: c.surface0),
           ),
@@ -207,9 +205,7 @@ class _SuccessCard extends StatelessWidget {
               // `printing` package not in pubspec — defer with snackbar
               // so we don't add a dependency without consent.
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Impression bientôt disponible.'),
-                ),
+                const SnackBar(content: Text('Impression bientôt disponible.')),
               );
             },
           ),
@@ -282,17 +278,13 @@ class _Row extends StatelessWidget {
             decoration: BoxDecoration(
               color: c.surface2,
               borderRadius: BorderRadius.circular(8),
-              image: item.primaryImageUrl != null
-                  ? DecorationImage(
-                      image: NetworkImage(item.primaryImageUrl!),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
             ),
-            alignment: Alignment.center,
-            child: item.primaryImageUrl == null
-                ? Icon(Icons.inventory_2_outlined, size: 18, color: c.fg3)
-                : null,
+            clipBehavior: Clip.antiAlias,
+            child: DidoProductImage(
+              imageUrl: item.primaryImageUrl,
+              errorBuilder: (_) =>
+                  Icon(Icons.inventory_2_outlined, size: 18, color: c.fg3),
+            ),
           ),
           SizedBox(width: context.spacing.space3),
           Expanded(
@@ -320,8 +312,7 @@ class _Row extends StatelessWidget {
           if (badgeLabel != null) ...[
             SizedBox(width: context.spacing.space2),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: c.surface2,
                 borderRadius: BorderRadius.circular(context.radius.radiusChip),

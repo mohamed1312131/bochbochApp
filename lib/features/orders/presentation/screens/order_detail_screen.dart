@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -9,6 +8,7 @@ import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/utils/millimes_formatter.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../../shared/widgets/profit_panel.dart';
 import '../../domain/exchange_models.dart';
 import '../../domain/issue_models.dart';
@@ -55,33 +55,32 @@ class _StatusStep {
 }
 
 List<String> _nextStatuses(String current) => switch (current) {
-      'PENDING' => ['CONFIRMED', 'CANCELLED'],
-      'CONFIRMED' => ['SHIPPED', 'CANCELLED'],
-      'SHIPPED' => ['DELIVERED', 'CANCELLED'],
-      _ => [],
-    };
+  'PENDING' => ['CONFIRMED', 'CANCELLED'],
+  'CONFIRMED' => ['SHIPPED', 'CANCELLED'],
+  'SHIPPED' => ['DELIVERED', 'CANCELLED'],
+  _ => [],
+};
 
 String _forwardActionLabel(String currentStatus) => switch (currentStatus) {
-      'PENDING' => 'Confirmer la commande',
-      'CONFIRMED' => 'Marquer comme expédiée',
-      'SHIPPED' => 'Marquer comme livrée',
-      _ => '',
-    };
+  'PENDING' => 'Confirmer la commande',
+  'CONFIRMED' => 'Marquer comme expédiée',
+  'SHIPPED' => 'Marquer comme livrée',
+  _ => '',
+};
 
 String _forwardStatus(String currentStatus) => switch (currentStatus) {
-      'PENDING' => 'CONFIRMED',
-      'CONFIRMED' => 'SHIPPED',
-      'SHIPPED' => 'DELIVERED',
-      _ => currentStatus,
-    };
+  'PENDING' => 'CONFIRMED',
+  'CONFIRMED' => 'SHIPPED',
+  'SHIPPED' => 'DELIVERED',
+  _ => currentStatus,
+};
 
 class OrderDetailScreen extends ConsumerStatefulWidget {
   const OrderDetailScreen({super.key, required this.orderId});
   final String orderId;
 
   @override
-  ConsumerState<OrderDetailScreen> createState() =>
-      _OrderDetailScreenState();
+  ConsumerState<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
@@ -121,8 +120,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               'Retour',
-              style:
-                  context.typography.bodyMd.copyWith(color: c.fg2),
+              style: context.typography.bodyMd.copyWith(color: c.fg2),
             ),
           ),
           TextButton(
@@ -147,7 +145,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final reason = await showRtoReasonPickerSheet(context);
     if (reason == null || !mounted) return;
     try {
-      await ref.read(submitRtoProvider.notifier).submit(
+      await ref
+          .read(submitRtoProvider.notifier)
+          .submit(
             orderId: order.id,
             reason: reason,
             targetStatus: RtoTargetStatus.inTransit,
@@ -179,10 +179,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
       final qty = item.quantity - item.returnedQuantity;
       if (qty <= 0) continue;
       preview.add(
-        ExpectedRestoreLine(
-          productName: item.productName,
-          quantity: qty,
-        ),
+        ExpectedRestoreLine(productName: item.productName, quantity: qty),
       );
     }
     Navigator.of(context).push(
@@ -227,8 +224,8 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         : ExchangeOriginalSnapshot(
             productName: firstItem.productName,
             attributes: {
-              for (final entry in (firstItem.variantAttributes ?? const {})
-                  .entries)
+              for (final entry
+                  in (firstItem.variantAttributes ?? const {}).entries)
                 entry.key: entry.value.toString(),
             },
             unitPrice: firstItem.unitPrice,
@@ -258,8 +255,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               'Annuler',
-              style:
-                  context.typography.bodyMd.copyWith(color: c.fg2),
+              style: context.typography.bodyMd.copyWith(color: c.fg2),
             ),
           ),
           TextButton(
@@ -306,15 +302,13 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           loading: () => _DetailSkeleton(onBack: () => context.pop()),
           error: (_, __) => _DetailError(
             onBack: () => context.pop(),
-            onRetry: () =>
-                ref.invalidate(orderDetailProvider(widget.orderId)),
+            onRetry: () => ref.invalidate(orderDetailProvider(widget.orderId)),
           ),
           data: (order) => _OrderContent(
             order: order,
             isUpdating: _isUpdating,
             isDeleting: _isDeleting,
-            onForward: () =>
-                _updateStatus(_forwardStatus(order.status)),
+            onForward: () => _updateStatus(_forwardStatus(order.status)),
             onCancel: _confirmCancel,
             onDelete: _confirmDelete,
             onExchange: () => _startExchange(order),
@@ -452,8 +446,11 @@ class _Header extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: c.fg1),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: c.fg1,
+              ),
             ),
           ),
           Expanded(
@@ -466,8 +463,7 @@ class _Header extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   DateFormatter.short(createdAt),
-                  style:
-                      context.typography.bodySmall.copyWith(color: c.fg3),
+                  style: context.typography.bodySmall.copyWith(color: c.fg3),
                 ),
               ],
             ),
@@ -483,8 +479,11 @@ class _Header extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.delete_outline_rounded,
-                  size: 18, color: c.coralFg),
+              child: Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: c.coralFg,
+              ),
             ),
           ),
         ],
@@ -525,16 +524,17 @@ class _StatusSection extends StatelessWidget {
     final canExchange = _canStartExchange(order.status);
     final canReportIssue = _canReportIssue(order.status);
     final canMarkRto = _canMarkRto(order.status);
-    final canPartialFulfill =
-        _canPartialFulfill(order.status, order.items.length);
+    final canPartialFulfill = _canPartialFulfill(
+      order.status,
+      order.items.length,
+    );
 
     return Container(
       padding: EdgeInsets.all(context.spacing.space4),
       decoration: BoxDecoration(
         color: c.surface1,
         border: Border.all(color: c.border1),
-        borderRadius:
-            BorderRadius.circular(context.radius.radiusCard),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
       ),
       child: Column(
         children: [
@@ -598,8 +598,7 @@ class _CancelledRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Cette commande a été annulée',
-                style:
-                    context.typography.bodySmall.copyWith(color: c.fg3),
+                style: context.typography.bodySmall.copyWith(color: c.fg3),
               ),
             ],
           ),
@@ -672,14 +671,17 @@ class _OrderTimeline extends StatelessWidget {
                     alignment: Alignment.center,
                     child: innerCircle,
                   )
-                : SizedBox(width: 40, height: 40, child: Center(child: innerCircle)),
+                : SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(child: innerCircle),
+                  ),
             const SizedBox(height: 6),
             Text(
               step.label,
               style: context.typography.tabPill.copyWith(
                 color: isCompleted ? c.fg1 : c.fg3,
-                fontWeight:
-                    isCompleted ? FontWeight.w600 : FontWeight.w500,
+                fontWeight: isCompleted ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ],
@@ -793,15 +795,15 @@ class _CustomerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final initial =
-        customer.name.isNotEmpty ? customer.name[0].toUpperCase() : '?';
+    final initial = customer.name.isNotEmpty
+        ? customer.name[0].toUpperCase()
+        : '?';
     return Container(
       padding: EdgeInsets.all(context.spacing.space4),
       decoration: BoxDecoration(
         color: c.surface1,
         border: Border.all(color: c.border1),
-        borderRadius:
-            BorderRadius.circular(context.radius.radiusCard),
+        borderRadius: BorderRadius.circular(context.radius.radiusCard),
       ),
       child: Row(
         children: [
@@ -835,8 +837,7 @@ class _CustomerSection extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   customer.phone,
-                  style:
-                      context.typography.bodySmall.copyWith(color: c.fg3),
+                  style: context.typography.bodySmall.copyWith(color: c.fg3),
                 ),
               ],
             ),
@@ -846,14 +847,13 @@ class _CustomerSection extends StatelessWidget {
             onTap: () {
               Clipboard.setData(ClipboardData(text: customer.phone));
               HapticFeedback.lightImpact();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Numéro copié')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Numéro copié')));
             },
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Icon(Icons.content_copy_outlined,
-                  size: 18, color: c.fg3),
+              child: Icon(Icons.content_copy_outlined, size: 18, color: c.fg3),
             ),
           ),
         ],
@@ -875,17 +875,13 @@ class _ItemsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Articles',
-          style: context.typography.h4.copyWith(color: c.fg1),
-        ),
+        Text('Articles', style: context.typography.h4.copyWith(color: c.fg1)),
         SizedBox(height: context.spacing.space3),
         Container(
           decoration: BoxDecoration(
             color: c.surface1,
             border: Border.all(color: c.border1),
-            borderRadius:
-                BorderRadius.circular(context.radius.radiusCard),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -927,26 +923,23 @@ class _ItemRow extends StatelessWidget {
             height: 52,
             decoration: BoxDecoration(
               color: c.surface2,
-              borderRadius:
-                  BorderRadius.circular(context.radius.radiusCard),
+              borderRadius: BorderRadius.circular(context.radius.radiusCard),
             ),
             clipBehavior: Clip.antiAlias,
             alignment: Alignment.center,
             child: item.primaryImageUrl != null
-                ? CachedNetworkImage(
+                ? DidoProductImage(
                     imageUrl: item.primaryImageUrl!,
                     fit: BoxFit.cover,
                     width: 52,
                     height: 52,
-                    placeholder: (_, __) => const SizedBox.shrink(),
-                    errorWidget: (_, __, ___) => Icon(
+                    errorBuilder: (_) => Icon(
                       Icons.inventory_2_outlined,
                       size: 20,
                       color: c.fg3,
                     ),
                   )
-                : Icon(Icons.inventory_2_outlined,
-                    size: 20, color: c.fg3),
+                : Icon(Icons.inventory_2_outlined, size: 20, color: c.fg3),
           ),
           SizedBox(width: context.spacing.space3),
           Expanded(
@@ -964,8 +957,7 @@ class _ItemRow extends StatelessWidget {
                   variant.isEmpty ? priceLine : '$variant · $priceLine',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      context.typography.bodySmall.copyWith(color: c.fg3),
+                  style: context.typography.bodySmall.copyWith(color: c.fg3),
                 ),
               ],
             ),
@@ -1004,8 +996,7 @@ class _ProfitChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: c.greenTint12,
-        borderRadius:
-            BorderRadius.circular(context.radius.radiusChip),
+        borderRadius: BorderRadius.circular(context.radius.radiusChip),
       ),
       child: Text(
         '+${MillimesFormatter.format(profit)}',
@@ -1043,8 +1034,7 @@ class _SummarySection extends StatelessWidget {
           decoration: BoxDecoration(
             color: c.surface1,
             border: Border.all(color: c.border1),
-            borderRadius:
-                BorderRadius.circular(context.radius.radiusCard),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
           ),
           child: Column(
             children: [
@@ -1090,8 +1080,7 @@ class _SummarySection extends StatelessWidget {
                   label: 'Bénéfice réel',
                   value: order.realProfit,
                   isBold: true,
-                  valueColor:
-                      order.realProfit >= 0 ? c.greenFg : c.coralFg,
+                  valueColor: order.realProfit >= 0 ? c.greenFg : c.coralFg,
                 ),
               ] else ...[
                 SizedBox(height: context.spacing.space3),
@@ -1101,8 +1090,7 @@ class _SummarySection extends StatelessWidget {
                   label: 'Bénéfice',
                   value: order.orderProfit,
                   isBold: true,
-                  valueColor:
-                      order.orderProfit >= 0 ? c.greenFg : c.coralFg,
+                  valueColor: order.orderProfit >= 0 ? c.greenFg : c.coralFg,
                 ),
               ],
             ],
@@ -1170,10 +1158,7 @@ class _NotesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Notes',
-          style: context.typography.h4.copyWith(color: c.fg1),
-        ),
+        Text('Notes', style: context.typography.h4.copyWith(color: c.fg1)),
         SizedBox(height: context.spacing.space3),
         Container(
           width: double.infinity,
@@ -1181,8 +1166,7 @@ class _NotesSection extends StatelessWidget {
           decoration: BoxDecoration(
             color: c.surface1,
             border: Border.all(color: c.border1),
-            borderRadius:
-                BorderRadius.circular(context.radius.radiusCard),
+            borderRadius: BorderRadius.circular(context.radius.radiusCard),
           ),
           child: Text(
             notes,
@@ -1209,13 +1193,14 @@ class _DetailSkeleton extends StatelessWidget {
     final c = context.colors;
     Widget block(double height) {
       return Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: c.surface2,
-          borderRadius:
-              BorderRadius.circular(context.radius.radiusCard),
-        ),
-      ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+            height: height,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(context.radius.radiusCard),
+            ),
+          )
+          .animate(onPlay: (ctrl) => ctrl.repeat())
+          .shimmer(
             duration: const Duration(milliseconds: 1500),
             color: c.surface3,
           );
@@ -1246,8 +1231,11 @@ class _DetailSkeleton extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.arrow_back_ios_new_rounded,
-                        size: 16, color: c.fg1),
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      color: c.fg1,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -1255,8 +1243,7 @@ class _DetailSkeleton extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: context.spacing.space4),
+            padding: EdgeInsets.symmetric(horizontal: context.spacing.space4),
             child: Column(
               children: [
                 block(140),
@@ -1305,8 +1292,11 @@ class _DetailError extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
-                  child: Icon(Icons.arrow_back_ios_new_rounded,
-                      size: 16, color: c.fg1),
+                  child: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 16,
+                    color: c.fg1,
+                  ),
                 ),
               ),
               const Spacer(),

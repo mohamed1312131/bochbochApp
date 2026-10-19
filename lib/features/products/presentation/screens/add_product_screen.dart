@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,8 +31,7 @@ class AddProductScreen extends ConsumerStatefulWidget {
   const AddProductScreen({super.key});
 
   @override
-  ConsumerState<AddProductScreen> createState() =>
-      _AddProductScreenState();
+  ConsumerState<AddProductScreen> createState() => _AddProductScreenState();
 }
 
 class _AddProductScreenState extends ConsumerState<AddProductScreen> {
@@ -103,7 +100,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   }
 
   bool get _canSave {
-    final commonOk = _nameController.text.trim().isNotEmpty &&
+    final commonOk =
+        _nameController.text.trim().isNotEmpty &&
         _costPriceController.text.trim().isNotEmpty &&
         _sellPriceController.text.trim().isNotEmpty;
     if (!commonOk) return false;
@@ -115,7 +113,6 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
     }
     return _stockController.text.trim().isNotEmpty;
   }
-
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -140,7 +137,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final usingVariants = !_isBundle && _hasVariants && _variants.isNotEmpty;
-    await ref.read(addProductProvider.notifier).createProduct(
+    await ref
+        .read(addProductProvider.notifier)
+        .createProduct(
           name: _nameController.text.trim(),
           baseCostPrice: _parseTnd(_costPriceController.text),
           baseSellPrice: _parseTnd(_sellPriceController.text),
@@ -164,23 +163,19 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
         );
 
     if (!_isBundle) return;
-    final created =
-        ref.read(addProductProvider).createdProduct;
+    final created = ref.read(addProductProvider).createdProduct;
     if (created == null || _bundleComponents.isEmpty) return;
     try {
-      await ref.read(stockRepositoryProvider).upsertBundle(
-            created.id,
-            [
-              for (final c in _bundleComponents)
-                BundleComponent(
-                  componentVariantId: c.variantId,
-                  componentProductName: c.productName,
-                  componentSku: c.sku,
-                  qtyPerBundle: c.qtyPerBundle,
-                  componentCost: c.componentCost,
-                ),
-            ],
-          );
+      await ref.read(stockRepositoryProvider).upsertBundle(created.id, [
+        for (final c in _bundleComponents)
+          BundleComponent(
+            componentVariantId: c.variantId,
+            componentProductName: c.productName,
+            componentSku: c.sku,
+            qtyPerBundle: c.qtyPerBundle,
+            componentCost: c.componentCost,
+          ),
+      ]);
     } catch (_) {
       // Bundle composition is non-fatal: product is created, but the
       // user will need to revisit and re-attach components. Surface
@@ -217,10 +212,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       title: 'Choisir une catégorie',
       child: categories.isEmpty
           ? Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 4,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
               child: Text(
                 'Aucune catégorie pour le moment.\nAjoute-en depuis Réglages → Catégories.',
                 style: context.typography.body.copyWith(color: c.fg2),
@@ -290,18 +282,14 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _PhotoPicker(
-                        image: _selectedImage,
-                        onTap: _pickImage,
-                      ),
+                      _PhotoPicker(image: _selectedImage, onTap: _pickImage),
                       SizedBox(height: context.spacing.space6),
                       const _SectionTitle('Type de produit'),
                       SizedBox(height: context.spacing.space2),
                       DidoSegmented(
                         segments: const ['Produit standard', 'Pack'],
                         activeIndex: _isBundle ? 1 : 0,
-                        onSegmentTap: (i) =>
-                            setState(() => _isBundle = i == 1),
+                        onSegmentTap: (i) => setState(() => _isBundle = i == 1),
                       ),
                       SizedBox(height: context.spacing.space6),
                       const _SectionTitle('Nom du produit *'),
@@ -331,18 +319,21 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                                   suffix: 'TND',
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
-                                          decimal: true),
+                                        decimal: true,
+                                      ),
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
-                                        RegExp(r'[\d,.]')),
+                                      RegExp(r'[\d,.]'),
+                                    ),
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
                                       return 'Requis';
                                     }
                                     if (double.tryParse(
-                                            v.replaceAll(',', '.')) ==
+                                          v.replaceAll(',', '.'),
+                                        ) ==
                                         null) {
                                       return 'Invalide';
                                     }
@@ -365,22 +356,29 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                                   suffix: 'TND',
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
-                                          decimal: true),
+                                        decimal: true,
+                                      ),
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
-                                        RegExp(r'[\d,.]')),
+                                      RegExp(r'[\d,.]'),
+                                    ),
                                   ],
                                   validator: (v) {
                                     if (v == null || v.isEmpty) {
                                       return 'Requis';
                                     }
                                     final sell = double.tryParse(
-                                        v.replaceAll(',', '.'));
+                                      v.replaceAll(',', '.'),
+                                    );
                                     if (sell == null) return 'Invalide';
-                                    final cost = double.tryParse(
-                                            _costPriceController.text
-                                                .replaceAll(',', '.')) ??
+                                    final cost =
+                                        double.tryParse(
+                                          _costPriceController.text.replaceAll(
+                                            ',',
+                                            '.',
+                                          ),
+                                        ) ??
                                         0;
                                     if (sell <= cost) {
                                       return "Doit être > prix d'achat";
@@ -395,10 +393,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                       ),
                       if (_profitMargin > 0) ...[
                         SizedBox(height: context.spacing.space3),
-                        _ProfitPreview(
-                          margin: _profitMargin,
-                          pct: _profitPct,
-                        ),
+                        _ProfitPreview(margin: _profitMargin, pct: _profitPct),
                       ],
                       if (!_isBundle) ...[
                         SizedBox(height: context.spacing.space6),
@@ -445,8 +440,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                           Text(
                             "Tu seras alerté(e) quand le stock disponible "
                             "tombe à ce niveau.",
-                            style: context.typography.caption
-                                .copyWith(color: c.fg3),
+                            style: context.typography.caption.copyWith(
+                              color: c.fg3,
+                            ),
                           ),
                           SizedBox(height: context.spacing.space6),
                           StockSettingsBackorderCard(
@@ -469,7 +465,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                           SizedBox(height: context.spacing.space6),
                           StockSettingsBackorderCard(
                             title: 'Accepter backorders',
-                            subtitle: 'Vendre même si en rupture (toutes variantes)',
+                            subtitle:
+                                'Vendre même si en rupture (toutes variantes)',
                             value: _backorderEnabled,
                             onChanged: (v) =>
                                 setState(() => _backorderEnabled = v),
@@ -555,8 +552,11 @@ class _Header extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: c.fg1),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: c.fg1,
+              ),
             ),
           ),
           SizedBox(width: context.spacing.space3),
@@ -600,22 +600,36 @@ class _PhotoPicker extends StatelessWidget {
             ? Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.file(File(image!.path), fit: BoxFit.cover),
+                  FutureBuilder<Uint8List>(
+                    future: image!.readAsBytes(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                    },
+                  ),
                   Positioned(
                     bottom: 12,
                     right: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: c.fg1,
                         borderRadius: BorderRadius.circular(
-                            context.radius.radiusInput),
+                          context.radius.radiusInput,
+                        ),
                       ),
                       child: Text(
                         'Changer la photo',
-                        style: context.typography.bodySmallMd
-                            .copyWith(color: c.surface0),
+                        style: context.typography.bodySmallMd.copyWith(
+                          color: c.surface0,
+                        ),
                       ),
                     ),
                   ),
@@ -632,8 +646,11 @@ class _PhotoPicker extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.add_a_photo_outlined,
-                        color: c.fg2, size: 24),
+                    child: Icon(
+                      Icons.add_a_photo_outlined,
+                      color: c.fg2,
+                      size: 24,
+                    ),
                   ),
                   SizedBox(height: context.spacing.space2),
                   Text(
@@ -699,8 +716,7 @@ class _PhotoSourceSheet extends StatelessWidget {
                     child: _PhotoSourceTile(
                       icon: Icons.camera_alt_rounded,
                       label: 'Appareil photo',
-                      onTap: () =>
-                          Navigator.pop(context, ImageSource.camera),
+                      onTap: () => Navigator.pop(context, ImageSource.camera),
                     ),
                   ),
                   SizedBox(width: context.spacing.space3),
@@ -708,8 +724,7 @@ class _PhotoSourceSheet extends StatelessWidget {
                     child: _PhotoSourceTile(
                       icon: Icons.photo_library_rounded,
                       label: 'Galerie',
-                      onTap: () =>
-                          Navigator.pop(context, ImageSource.gallery),
+                      onTap: () => Navigator.pop(context, ImageSource.gallery),
                     ),
                   ),
                 ],
@@ -995,7 +1010,6 @@ class _ScaleTapState extends State<_ScaleTap> {
     );
   }
 }
-
 
 class _CategoryDropdown extends StatelessWidget {
   const _CategoryDropdown({required this.selectedName, required this.onTap});

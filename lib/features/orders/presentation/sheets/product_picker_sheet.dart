@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../products/domain/product_models.dart';
 import '../../../products/presentation/providers/product_provider.dart';
 import '../../../stock/domain/stock_models.dart';
@@ -61,16 +62,15 @@ class OrderItemDraft {
   final int quantity;
   final bool isBackorder;
 
-  OrderItemDraft copyWith({int? quantity, bool? isBackorder}) =>
-      OrderItemDraft(
-        productId: productId,
-        variantId: variantId,
-        productName: productName,
-        unitPrice: unitPrice,
-        unitCost: unitCost,
-        quantity: quantity ?? this.quantity,
-        isBackorder: isBackorder ?? this.isBackorder,
-      );
+  OrderItemDraft copyWith({int? quantity, bool? isBackorder}) => OrderItemDraft(
+    productId: productId,
+    variantId: variantId,
+    productName: productName,
+    unitPrice: unitPrice,
+    unitCost: unitCost,
+    quantity: quantity ?? this.quantity,
+    isBackorder: isBackorder ?? this.isBackorder,
+  );
 }
 
 /// Opens the product picker. Returns the chosen draft, or null if dismissed.
@@ -100,8 +100,9 @@ class _ProductPickerSheetState extends ConsumerState<_ProductPickerSheet> {
   ProductLean? _selectedProduct;
 
   Future<List<ProductLean>> _loadProducts() async {
-    final result =
-        await ref.read(productRepositoryProvider).getProducts(limit: 50);
+    final result = await ref
+        .read(productRepositoryProvider)
+        .getProducts(limit: 50);
     return result.data;
   }
 
@@ -156,8 +157,9 @@ class _ProductPickerSheetState extends ConsumerState<_ProductPickerSheet> {
     }
     // Single-variant: fetch full product to read the variant id+price+cost.
     try {
-      final full =
-          await ref.read(productRepositoryProvider).getProduct(product.id);
+      final full = await ref
+          .read(productRepositoryProvider)
+          .getProduct(product.id);
       if (!mounted || full.variants.isEmpty) return;
       final v = full.variants.first;
 
@@ -302,13 +304,14 @@ class _ProductsViewState extends State<_ProductsView> {
             future: _future,
             builder: (_, snap) {
               if (snap.connectionState != ConnectionState.done) {
-                return _ProductsSkeleton(scrollController: widget.scrollController);
+                return _ProductsSkeleton(
+                  scrollController: widget.scrollController,
+                );
               }
               if (snap.hasError) {
                 return _ErrorView(
                   message: 'Impossible de charger les produits',
-                  onRetry: () =>
-                      setState(() => _future = widget.loader()),
+                  onRetry: () => setState(() => _future = widget.loader()),
                 );
               }
               final products = snap.data ?? const <ProductLean>[];
@@ -319,8 +322,8 @@ class _ProductsViewState extends State<_ProductsView> {
               final filtered = q.isEmpty
                   ? products
                   : products
-                      .where((p) => p.name.toLowerCase().contains(q))
-                      .toList();
+                        .where((p) => p.name.toLowerCase().contains(q))
+                        .toList();
               if (filtered.isEmpty) {
                 return _NoSearchResultsState(query: widget.query);
               }
@@ -363,16 +366,15 @@ class _ProductRow extends StatelessWidget {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius:
-                  BorderRadius.circular(context.radius.radiusInput),
+              borderRadius: BorderRadius.circular(context.radius.radiusInput),
               child: SizedBox(
                 width: 48,
                 height: 48,
                 child: product.primaryImageUrl != null
-                    ? Image.network(
-                        product.primaryImageUrl!,
+                    ? DidoProductImage(
+                        imageUrl: product.primaryImageUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _ImageFallback(),
+                        errorBuilder: (_) => _ImageFallback(),
                       )
                     : _ImageFallback(),
               ),
@@ -474,18 +476,19 @@ class _VariantView extends ConsumerWidget {
             child: _ScaleTap(
               onTap: onBack,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 4, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.arrow_back_ios_new_rounded,
-                        size: 14, color: c.fg1),
+                    Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 14,
+                      color: c.fg1,
+                    ),
                     SizedBox(width: context.spacing.space1),
                     Text(
                       'Retour aux produits',
-                      style:
-                          context.typography.button.copyWith(color: c.fg1),
+                      style: context.typography.button.copyWith(color: c.fg1),
                     ),
                   ],
                 ),
@@ -500,12 +503,10 @@ class _VariantView extends ConsumerWidget {
                 _ProductsSkeleton(scrollController: scrollController),
             error: (_, __) => _ErrorView(
               message: 'Impossible de charger les variantes',
-              onRetry: () =>
-                  ref.invalidate(productDetailProvider(product.id)),
+              onRetry: () => ref.invalidate(productDetailProvider(product.id)),
             ),
             data: (full) {
-              final variants =
-                  full.variants.where((v) => v.isActive).toList();
+              final variants = full.variants.where((v) => v.isActive).toList();
               if (variants.isEmpty) {
                 return const _NoVariantsState();
               }
@@ -559,10 +560,7 @@ class _VariantView extends ConsumerWidget {
 /// (legacy field) for the displayed count — preserves UI for real
 /// backend data not yet covered by the mock state map.
 class _VariantRow extends ConsumerWidget {
-  const _VariantRow({
-    required this.variant,
-    required this.onPick,
-  });
+  const _VariantRow({required this.variant, required this.onPick});
 
   final ProductVariant variant;
   final void Function({required bool isBackorder}) onPick;
@@ -573,7 +571,8 @@ class _VariantRow extends ConsumerWidget {
     final stateAsync = ref.watch(stockStateProvider(variant.id));
     final state = stateAsync.valueOrNull;
 
-    final hasLiveData = state != null &&
+    final hasLiveData =
+        state != null &&
         (state.onHand > 0 ||
             state.committedOrders.isNotEmpty ||
             state.backordered > 0);
@@ -625,17 +624,15 @@ class _VariantRow extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      variant.isSimple
-                          ? 'Standard'
-                          : variant.attributeLabel,
-                      style:
-                          context.typography.h4.copyWith(color: c.fg1),
+                      variant.isSimple ? 'Standard' : variant.attributeLabel,
+                      style: context.typography.h4.copyWith(color: c.fg1),
                     ),
                     SizedBox(height: context.spacing.space1),
                     Text(
                       variant.sku,
-                      style: context.typography.bodySmall
-                          .copyWith(color: c.fg3),
+                      style: context.typography.bodySmall.copyWith(
+                        color: c.fg3,
+                      ),
                     ),
                   ],
                 ),
@@ -644,8 +641,7 @@ class _VariantRow extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    MillimesFormatter.format(
-                        variant.effectiveSellPrice),
+                    MillimesFormatter.format(variant.effectiveSellPrice),
                     style: context.typography.bodyMd.copyWith(
                       color: c.fg1,
                       fontWeight: FontWeight.w600,
@@ -670,22 +666,19 @@ class _VariantRow extends ConsumerWidget {
             SizedBox(height: context.spacing.space1),
             Text(
               '$available dispo · $committed réservé',
-              style:
-                  context.typography.caption.copyWith(color: c.coralFg),
+              style: context.typography.caption.copyWith(color: c.coralFg),
             ),
           ] else if (isOutWithBackorder) ...[
             SizedBox(height: context.spacing.space1),
             Text(
               'Pas en stock — sera commandé en backorder',
-              style:
-                  context.typography.caption.copyWith(color: c.coralFg),
+              style: context.typography.caption.copyWith(color: c.coralFg),
             ),
           ] else if (isOutHard) ...[
             SizedBox(height: context.spacing.space1),
             Text(
               'Stock épuisé',
-              style:
-                  context.typography.caption.copyWith(color: c.redFg),
+              style: context.typography.caption.copyWith(color: c.redFg),
             ),
           ],
         ],
@@ -696,10 +689,7 @@ class _VariantRow extends ConsumerWidget {
       onTap: tapHandler,
       child: Opacity(
         opacity: isOutHard ? 0.4 : 1.0,
-        child: AbsorbPointer(
-          absorbing: isOutHard,
-          child: body,
-        ),
+        child: AbsorbPointer(absorbing: isOutHard, child: body),
       ),
     );
   }
@@ -752,10 +742,7 @@ class _StockPill extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(context.radius.radiusChip),
       ),
-      child: Text(
-        label,
-        style: context.typography.tabPill.copyWith(color: fg),
-      ),
+      child: Text(label, style: context.typography.tabPill.copyWith(color: fg)),
     );
   }
 }
@@ -893,13 +880,15 @@ class _ProductsSkeleton extends StatelessWidget {
     final c = context.colors;
     Widget bar({required double w, required double h}) {
       return Container(
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-          color: c.surface2,
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+            width: w,
+            height: h,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          )
+          .animate(onPlay: (ctrl) => ctrl.repeat())
+          .shimmer(
             duration: const Duration(milliseconds: 1500),
             color: c.surface3,
           );
@@ -920,14 +909,17 @@ class _ProductsSkeleton extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: c.surface2,
-                borderRadius:
-                    BorderRadius.circular(context.radius.radiusInput),
-              ),
-            ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: c.surface2,
+                    borderRadius: BorderRadius.circular(
+                      context.radius.radiusInput,
+                    ),
+                  ),
+                )
+                .animate(onPlay: (ctrl) => ctrl.repeat())
+                .shimmer(
                   duration: const Duration(milliseconds: 1500),
                   color: c.surface3,
                 ),
@@ -1002,10 +994,7 @@ class _CloseButton extends StatelessWidget {
       child: Container(
         width: 36,
         height: 36,
-        decoration: BoxDecoration(
-          color: c.surface2,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: c.surface2, shape: BoxShape.circle),
         alignment: Alignment.center,
         child: Icon(Icons.close_rounded, size: 18, color: c.fg1),
       ),

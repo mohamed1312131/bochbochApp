@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../../shared/widgets/stock_chip.dart';
 import '../../../products/domain/product_models.dart';
 import '../../../products/presentation/providers/product_provider.dart';
@@ -67,9 +67,7 @@ class _ExchangePickItemScreenState
             productId: full.id,
             variantId: selected!.id,
             productName: full.name,
-            attributes: {
-              for (final a in selected.attributes) a.name: a.value,
-            },
+            attributes: {for (final a in selected.attributes) a.name: a.value},
             sellPrice: selected.effectiveSellPrice,
             // availableQuantity is the stock-aware figure (Chunk 8a);
             // fall back to the legacy stockQuantity if the variant
@@ -102,9 +100,7 @@ class _ExchangePickItemScreenState
   void _onContinue() {
     if (_draft.target == null) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ExchangeCostsScreen(draft: _draft),
-      ),
+      MaterialPageRoute(builder: (_) => ExchangeCostsScreen(draft: _draft)),
     );
   }
 
@@ -153,8 +149,8 @@ class _ExchangePickItemScreenState
                     final filtered = q.isEmpty
                         ? products
                         : products
-                            .where((p) => p.name.toLowerCase().contains(q))
-                            .toList();
+                              .where((p) => p.name.toLowerCase().contains(q))
+                              .toList();
                     if (filtered.isEmpty) {
                       return _EmptyState(query: q);
                     }
@@ -177,10 +173,7 @@ class _ExchangePickItemScreenState
               ],
             ),
           ),
-          _Footer(
-            canContinue: canContinue,
-            onContinue: _onContinue,
-          ),
+          _Footer(canContinue: canContinue, onContinue: _onContinue),
         ],
       ),
     );
@@ -240,8 +233,9 @@ class _OriginalItemCard extends StatelessWidget {
                           snapshot.attributesLabel,
                         MillimesFormatter.format(snapshot.unitPrice),
                       ].join(' · '),
-                      style:
-                          context.typography.bodySmall.copyWith(color: c.fg3),
+                      style: context.typography.bodySmall.copyWith(
+                        color: c.fg3,
+                      ),
                     ),
                   ),
               ],
@@ -349,8 +343,7 @@ class _ProductsCard extends StatelessWidget {
               isSelected: selectedTarget?.productId == products[i].id,
               onTap: () => onTap(products[i]),
             ),
-            if (i < products.length - 1)
-              Container(height: 1, color: c.border1),
+            if (i < products.length - 1) Container(height: 1, color: c.border1),
           ],
         ],
       ),
@@ -389,21 +382,28 @@ class _ProductRow extends StatelessWidget {
                   width: 44,
                   height: 44,
                   child: product.primaryImageUrl != null
-                      ? CachedNetworkImage(
+                      ? DidoProductImage(
                           imageUrl: product.primaryImageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(color: c.surface2),
-                          errorWidget: (_, __, ___) => Container(
+                          placeholderBuilder: (_) =>
+                              Container(color: c.surface2),
+                          errorBuilder: (_) => Container(
                             color: c.surface2,
-                            child: Icon(Icons.image_outlined,
-                                size: 18, color: c.fg3),
+                            child: Icon(
+                              Icons.image_outlined,
+                              size: 18,
+                              color: c.fg3,
+                            ),
                           ),
                         )
                       : Container(
                           color: c.surface2,
                           alignment: Alignment.center,
-                          child: Icon(Icons.inventory_2_outlined,
-                              size: 18, color: c.fg3),
+                          child: Icon(
+                            Icons.inventory_2_outlined,
+                            size: 18,
+                            color: c.fg3,
+                          ),
                         ),
                 ),
               ),
@@ -416,8 +416,7 @@ class _ProductRow extends StatelessWidget {
                       product.name,
                       style: context.typography.bodyMd.copyWith(
                         color: isOut ? c.fg3 : c.fg1,
-                        decoration:
-                            isOut ? TextDecoration.lineThrough : null,
+                        decoration: isOut ? TextDecoration.lineThrough : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -427,8 +426,9 @@ class _ProductRow extends StatelessWidget {
                       product.isMultiVariant
                           ? 'Plusieurs variantes · ${MillimesFormatter.format(product.baseSellPrice)}'
                           : MillimesFormatter.format(product.baseSellPrice),
-                      style:
-                          context.typography.bodySmall.copyWith(color: c.fg3),
+                      style: context.typography.bodySmall.copyWith(
+                        color: c.fg3,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -524,13 +524,15 @@ class _VariantPickerSheet extends StatelessWidget {
                                 children: [
                                   Text(
                                     label,
-                                    style: context.typography.bodyMd
-                                        .copyWith(color: c.fg1),
+                                    style: context.typography.bodyMd.copyWith(
+                                      color: c.fg1,
+                                    ),
                                   ),
                                   SizedBox(height: context.spacing.space1),
                                   Text(
                                     MillimesFormatter.format(
-                                        v.effectiveSellPrice),
+                                      v.effectiveSellPrice,
+                                    ),
                                     style: context.typography.bodySmall
                                         .copyWith(color: c.fg3),
                                   ),

@@ -6,14 +6,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/config/demo_mode.dart';
 import '../../../../core/theme/app_theme_extension.dart';
+import '../../../../demo/demo_providers.dart';
 import '../../../../features/boutiques/presentation/boutique_providers.dart';
+import '../../../../features/customers/presentation/providers/customer_provider.dart';
+import '../../../../features/goals/presentation/goal_providers.dart';
+import '../../../../features/orders/presentation/providers/order_provider.dart';
+import '../../../../features/products/presentation/providers/product_provider.dart';
+import '../../../../features/profit/presentation/providers/dashboard_provider.dart';
+import '../../../../features/profit/presentation/providers/profit_provider.dart';
+import '../../../../features/stock/presentation/providers/stock_provider.dart';
 import '../../../../shared/providers/auth_state_provider.dart';
 import '../../../../shared/providers/package_info_provider.dart';
 import '../../../../shared/providers/theme_provider.dart';
 
-final _userInfoProvider =
-    FutureProvider.autoDispose<Map<String, String>>((ref) async {
+final _userInfoProvider = FutureProvider.autoDispose<Map<String, String>>((
+  ref,
+) async {
+  if (kDidoDemoMode) {
+    return const {
+      'fullName': 'Sania Ben Salah',
+      'email': 'sania@boutiquesania.tn',
+      'tier': 'DEMO PRO',
+    };
+  }
   const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
@@ -98,13 +115,11 @@ class SettingsScreen extends ConsumerWidget {
                         trailing: CupertinoSwitch(
                           value: isDark,
                           activeTrackColor: c.fg1,
-                          onChanged: (_) => ref
-                              .read(themeModeProvider.notifier)
-                              .toggle(),
+                          onChanged: (_) =>
+                              ref.read(themeModeProvider.notifier).toggle(),
                         ),
-                        onTap: () => ref
-                            .read(themeModeProvider.notifier)
-                            .toggle(),
+                        onTap: () =>
+                            ref.read(themeModeProvider.notifier).toggle(),
                       ),
                     ],
                   ),
@@ -116,7 +131,11 @@ class SettingsScreen extends ConsumerWidget {
                   // "Bientôt disponible" snackbars is a fast track to
                   // app-store rejection.
                   SizedBox(height: context.spacing.space6),
-                  const _SettingsCard(children: [_LogoutRow()]),
+                  if (kDidoDemoMode) ...[
+                    const _SectionLabel('MODE DÉMO'),
+                    const _SettingsCard(children: [_DemoResetRow()]),
+                  ] else
+                    const _SettingsCard(children: [_LogoutRow()]),
                   SizedBox(height: context.spacing.space6),
                   const _VersionString(),
                   SizedBox(height: context.spacing.space6),
@@ -159,15 +178,15 @@ class _Header extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: c.fg1),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: c.fg1,
+              ),
             ),
           ),
           SizedBox(width: context.spacing.space3),
-          Text(
-            'Réglages',
-            style: context.typography.h1.copyWith(color: c.fg1),
-          ),
+          Text('Réglages', style: context.typography.h1.copyWith(color: c.fg1)),
         ],
       ),
     );
@@ -219,8 +238,7 @@ class _IdentityCard extends StatelessWidget {
                     email,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: context.typography.bodySmall
-                        .copyWith(color: c.fg3),
+                    style: context.typography.bodySmall.copyWith(color: c.fg3),
                   ),
                 ],
                 SizedBox(height: context.spacing.space2),
@@ -274,10 +292,7 @@ class _BoutiqueAvatar extends ConsumerWidget {
     final fallback = Container(
       width: 64,
       height: 64,
-      decoration: BoxDecoration(
-        color: c.brandTeal,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: c.brandTeal, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         initial,
@@ -384,8 +399,7 @@ class _SettingsRow extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: c.surface2,
-                borderRadius:
-                    BorderRadius.circular(context.radius.radiusInput),
+                borderRadius: BorderRadius.circular(context.radius.radiusInput),
               ),
               alignment: Alignment.center,
               child: Icon(icon, size: 18, color: c.fg2),
@@ -402,8 +416,7 @@ class _SettingsRow extends StatelessWidget {
               SizedBox(width: context.spacing.space2),
             ],
             if (showChevron)
-              Icon(Icons.chevron_right_rounded,
-                  size: 20, color: c.fg3),
+              Icon(Icons.chevron_right_rounded, size: 20, color: c.fg3),
           ],
         ),
       ),
@@ -442,8 +455,7 @@ class _LogoutRow extends ConsumerWidget {
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               'Annuler',
-              style:
-                  context.typography.bodyMd.copyWith(color: c.fg2),
+              style: context.typography.bodyMd.copyWith(color: c.fg2),
             ),
           ),
           TextButton(
@@ -481,12 +493,10 @@ class _LogoutRow extends ConsumerWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: c.coralTint12,
-                borderRadius:
-                    BorderRadius.circular(context.radius.radiusInput),
+                borderRadius: BorderRadius.circular(context.radius.radiusInput),
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.logout_rounded,
-                  size: 18, color: c.coralFg),
+              child: Icon(Icons.logout_rounded, size: 18, color: c.coralFg),
             ),
             SizedBox(width: context.spacing.space3),
             Text(
@@ -496,6 +506,104 @@ class _LogoutRow extends ConsumerWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DemoResetRow extends ConsumerWidget {
+  const _DemoResetRow();
+
+  Future<void> _reset(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Réinitialiser la démo'),
+        content: const Text(
+          'Toutes les modifications locales seront remplacées par le scénario de présentation initial.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Réinitialiser'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    ref.read(demoStoreProvider).reset();
+    ref.invalidate(productListProvider);
+    ref.invalidate(orderListProvider);
+    ref.invalidate(customerListProvider);
+    ref.invalidate(currentBoutiqueProvider);
+    ref.invalidate(activeGoalProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(profitSummaryProvider);
+    ref.invalidate(productProfitProvider);
+    ref.invalidate(profitTrendProvider);
+    ref.invalidate(stockRepositoryProvider);
+
+    if (context.mounted) {
+      context.go('/home');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La démo a été réinitialisée.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return _ScaleTap(
+      onTap: () => _reset(context, ref),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.spacing.space4,
+          vertical: context.spacing.space3,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: c.brandTealTint08,
+                borderRadius: BorderRadius.circular(context.radius.radiusInput),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.restart_alt_rounded,
+                size: 20,
+                color: c.brandTeal,
+              ),
+            ),
+            SizedBox(width: context.spacing.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Réinitialiser les données',
+                    style: context.typography.bodyMd.copyWith(
+                      color: c.fg1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Restaurer le scénario de présentation',
+                    style: context.typography.caption.copyWith(color: c.fg3),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.refresh_rounded, color: c.fg3),
           ],
         ),
       ),

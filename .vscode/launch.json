@@ -17,6 +17,16 @@
       "args": [
         "--dart-define-from-file=dart_defines/dev.json"
       ]
+    },
+    {
+      "name": "DIDO static demo (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "program": "lib/main_demo.dart",
+      "args": [
+        "--dart-define=DIDO_DEMO_MODE=true"
+      ]
     }
   ]
 }

@@ -1,0 +1,14 @@
+.dart_tool
+.git
+.github
+.idea
+.vscode
+android
+build
+coverage
+dart_defines
+ios
+test
+*.iml
+*.log
+.DS_Store

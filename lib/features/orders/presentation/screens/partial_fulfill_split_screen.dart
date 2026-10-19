@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../domain/order_models.dart';
 import '../../domain/partial_fulfill_models.dart';
 import 'partial_fulfill_confirm_screen.dart';
@@ -34,8 +35,9 @@ class PartialFulfillSplitScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final shipped = items.where((i) => !i.isBackorder).toList(growable: false);
-    final backordered =
-        items.where((i) => i.isBackorder).toList(growable: false);
+    final backordered = items
+        .where((i) => i.isBackorder)
+        .toList(growable: false);
 
     return Scaffold(
       backgroundColor: c.surface1,
@@ -93,8 +95,7 @@ class PartialFulfillSplitScreen extends ConsumerWidget {
                     padding: EdgeInsets.only(left: context.spacing.space2),
                     child: Text(
                       'CONTACT CLIENT',
-                      style:
-                          context.typography.label.copyWith(color: c.fg3),
+                      style: context.typography.label.copyWith(color: c.fg3),
                     ),
                   ),
                   SizedBox(height: context.spacing.space2),
@@ -109,15 +110,15 @@ class PartialFulfillSplitScreen extends ConsumerWidget {
             onShipNow: shipped.isEmpty
                 ? null
                 : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PartialFulfillConfirmScreen(
-                          orderId: orderId,
-                          orderNumber: orderNumber,
-                          shippedItems: shipped,
-                          backorderedItems: backordered,
-                        ),
+                    MaterialPageRoute(
+                      builder: (_) => PartialFulfillConfirmScreen(
+                        orderId: orderId,
+                        orderNumber: orderNumber,
+                        shippedItems: shipped,
+                        backorderedItems: backordered,
                       ),
                     ),
+                  ),
             onWait: () => Navigator.of(context).pop(),
           ),
         ],
@@ -251,8 +252,7 @@ class _ItemRow extends StatelessWidget {
           if (backorderBadge) ...[
             SizedBox(width: context.spacing.space2),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: c.coralTint12,
                 borderRadius: BorderRadius.circular(context.radius.radiusChip),
@@ -281,17 +281,13 @@ class _Thumbnail extends StatelessWidget {
       decoration: BoxDecoration(
         color: c.surface2,
         borderRadius: BorderRadius.circular(8),
-        image: url != null
-            ? DecorationImage(
-                image: NetworkImage(url!),
-                fit: BoxFit.cover,
-              )
-            : null,
       ),
-      alignment: Alignment.center,
-      child: url == null
-          ? Icon(Icons.inventory_2_outlined, size: 18, color: c.fg3)
-          : null,
+      clipBehavior: Clip.antiAlias,
+      child: DidoProductImage(
+        imageUrl: url,
+        errorBuilder: (_) =>
+            Icon(Icons.inventory_2_outlined, size: 18, color: c.fg3),
+      ),
     );
   }
 }
@@ -373,9 +369,7 @@ class _ChannelPill extends StatelessWidget {
         // https://ig.me/m/<handle>.
         final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Lien direct bientôt disponible.'),
-          ),
+          const SnackBar(content: Text('Lien direct bientôt disponible.')),
         );
       },
       borderRadius: BorderRadius.circular(8),
@@ -392,8 +386,7 @@ class _ChannelPill extends StatelessWidget {
             SizedBox(width: context.spacing.space2),
             Text(
               info.cta,
-              style:
-                  context.typography.button.copyWith(color: info.fg),
+              style: context.typography.button.copyWith(color: info.fg),
             ),
           ],
         ),

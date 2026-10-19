@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -8,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme_extension.dart';
 import '../../../../core/utils/millimes_formatter.dart';
 import '../../../../shared/widgets/dido_button.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../../shared/widgets/dido_tab_strip.dart';
 import '../../../../shared/widgets/stock_chip.dart';
 import '../../domain/product_models.dart';
@@ -28,8 +28,7 @@ class ProductDetailScreen extends ConsumerWidget {
       body: productAsync.when(
         loading: () => const _DetailSkeleton(),
         error: (_, __) => _DetailError(
-          onRetry: () =>
-              ref.invalidate(productDetailProvider(productId)),
+          onRetry: () => ref.invalidate(productDetailProvider(productId)),
         ),
         data: (product) => _ProductDetailContent(product: product),
       ),
@@ -46,8 +45,7 @@ class _ProductDetailContent extends ConsumerStatefulWidget {
       _ProductDetailContentState();
 }
 
-class _ProductDetailContentState
-    extends ConsumerState<_ProductDetailContent> {
+class _ProductDetailContentState extends ConsumerState<_ProductDetailContent> {
   int _currentImageIndex = 0;
   int _activeTab = 0;
 
@@ -58,8 +56,7 @@ class _ProductDetailContentState
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: c.surface1,
         shape: RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(context.radius.radiusSheet),
+          borderRadius: BorderRadius.circular(context.radius.radiusSheet),
         ),
         title: Text(
           'Supprimer ce produit ?',
@@ -93,9 +90,7 @@ class _ProductDetailContentState
       await ref
           .read(productRepositoryProvider)
           .deleteProduct(widget.product.id);
-      ref
-          .read(productListProvider.notifier)
-          .removeProduct(widget.product.id);
+      ref.read(productListProvider.notifier).removeProduct(widget.product.id);
       if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
@@ -124,8 +119,7 @@ class _ProductDetailContentState
           child: _HeroImage(
             images: images,
             currentIndex: _currentImageIndex,
-            onPageChanged: (i) =>
-                setState(() => _currentImageIndex = i),
+            onPageChanged: (i) => setState(() => _currentImageIndex = i),
             onBack: () => context.pop(),
           ),
         ),
@@ -162,8 +156,10 @@ class _ProductDetailContentState
                 SizedBox(height: context.spacing.space3),
                 Text(
                   product.description!,
-                  style: context.typography.bodyMd
-                      .copyWith(color: c.fg2, height: 1.5),
+                  style: context.typography.bodyMd.copyWith(
+                    color: c.fg2,
+                    height: 1.5,
+                  ),
                 ),
               ],
               SizedBox(height: context.spacing.space5),
@@ -181,15 +177,16 @@ class _ProductDetailContentState
             1 => ProductStockTab(product: product),
             2 => ProductHistoryTab(product: product),
             _ => Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: context.spacing.screenEdge),
-                child: _DetailsTab(
-                  product: product,
-                  profitPerUnit: profitPerUnit,
-                  profitMarginPct: profitMarginPct,
-                  onDelete: _confirmDelete,
-                ),
+              padding: EdgeInsets.symmetric(
+                horizontal: context.spacing.screenEdge,
               ),
+              child: _DetailsTab(
+                product: product,
+                profitPerUnit: profitPerUnit,
+                profitMarginPct: profitMarginPct,
+                onDelete: _confirmDelete,
+              ),
+            ),
           },
         ),
       ],
@@ -216,8 +213,7 @@ class _DetailsTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Prix',
-            style: context.typography.h4.copyWith(color: c.fg1)),
+        Text('Prix', style: context.typography.h4.copyWith(color: c.fg1)),
         SizedBox(height: context.spacing.space3),
         _PricingCard(
           cost: product.baseCostPrice,
@@ -228,13 +224,11 @@ class _DetailsTab extends StatelessWidget {
         SizedBox(height: context.spacing.space6),
         Row(
           children: [
-            Text('Stock',
-                style: context.typography.h4.copyWith(color: c.fg1)),
+            Text('Stock', style: context.typography.h4.copyWith(color: c.fg1)),
             const Spacer(),
             Text(
               'Total : ${product.totalStock} unités',
-              style:
-                  context.typography.bodySmall.copyWith(color: c.fg3),
+              style: context.typography.bodySmall.copyWith(color: c.fg3),
             ),
           ],
         ),
@@ -297,23 +291,29 @@ class _HeroImage extends StatelessWidget {
               ? PageView.builder(
                   itemCount: images.length,
                   onPageChanged: onPageChanged,
-                  itemBuilder: (_, i) => CachedNetworkImage(
+                  itemBuilder: (_, i) => DidoProductImage(
                     imageUrl: images[i].url,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(color: c.surface2),
-                    errorWidget: (_, __, ___) => Container(
+                    placeholderBuilder: (_) => Container(color: c.surface2),
+                    errorBuilder: (_) => Container(
                       color: c.surface2,
                       alignment: Alignment.center,
-                      child: Icon(Icons.inventory_2_outlined,
-                          size: 48, color: c.fg3),
+                      child: Icon(
+                        Icons.inventory_2_outlined,
+                        size: 48,
+                        color: c.fg3,
+                      ),
                     ),
                   ),
                 )
               : Container(
                   color: c.surface2,
                   alignment: Alignment.center,
-                  child: Icon(Icons.inventory_2_outlined,
-                      size: 64, color: c.fg3),
+                  child: Icon(
+                    Icons.inventory_2_outlined,
+                    size: 64,
+                    color: c.fg3,
+                  ),
                 ),
         ),
         // Bottom scrim for legibility (uses scrim token; transparent-end
@@ -362,8 +362,9 @@ class _HeroImage extends StatelessWidget {
                     color: currentIndex == i
                         ? c.surface0
                         : c.surface0.withAlpha(127),
-                    borderRadius:
-                        BorderRadius.circular(context.radius.radiusFull),
+                    borderRadius: BorderRadius.circular(
+                      context.radius.radiusFull,
+                    ),
                   ),
                 ),
               ),
@@ -415,10 +416,7 @@ class _ActiveBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(context.radius.radiusChip),
       ),
-      child: Text(
-        label,
-        style: context.typography.tabPill.copyWith(color: fg),
-      ),
+      child: Text(label, style: context.typography.tabPill.copyWith(color: fg)),
     );
   }
 }
@@ -475,9 +473,15 @@ class _PricingCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _PriceRow(label: "Prix d'achat", value: MillimesFormatter.format(cost)),
+          _PriceRow(
+            label: "Prix d'achat",
+            value: MillimesFormatter.format(cost),
+          ),
           Container(height: 1, color: c.border1),
-          _PriceRow(label: 'Prix de vente', value: MillimesFormatter.format(sell)),
+          _PriceRow(
+            label: 'Prix de vente',
+            value: MillimesFormatter.format(sell),
+          ),
           Container(height: 1, color: c.border1),
           _PriceRow(
             label: 'Bénéfice par vente',
@@ -521,8 +525,7 @@ class _PriceRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: context.typography.body.copyWith(color: c.fg2)),
+          Text(label, style: context.typography.body.copyWith(color: c.fg2)),
           Text(value, style: valueStyle),
         ],
       ),
@@ -552,8 +555,7 @@ class _VariantsCard extends StatelessWidget {
         children: [
           for (var i = 0; i < active.length; i++) ...[
             _VariantRow(variant: active[i]),
-            if (i < active.length - 1)
-              Container(height: 1, color: c.border1),
+            if (i < active.length - 1) Container(height: 1, color: c.border1),
           ],
         ],
       ),
@@ -586,8 +588,7 @@ class _VariantRow extends StatelessWidget {
                 SizedBox(height: context.spacing.space1),
                 Text(
                   variant.sku,
-                  style:
-                      context.typography.bodySmall.copyWith(color: c.fg3),
+                  style: context.typography.bodySmall.copyWith(color: c.fg3),
                 ),
               ],
             ),
@@ -610,13 +611,15 @@ class _DetailSkeleton extends StatelessWidget {
     final c = context.colors;
     Widget bar({required double w, required double h}) {
       return Container(
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-          color: c.surface2,
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+            width: w,
+            height: h,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          )
+          .animate(onPlay: (ctrl) => ctrl.repeat())
+          .shimmer(
             duration: const Duration(milliseconds: 1500),
             color: c.surface3,
           );
@@ -625,11 +628,9 @@ class _DetailSkeleton extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          height: 320,
-          width: double.infinity,
-          color: c.surface2,
-        ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+        Container(height: 320, width: double.infinity, color: c.surface2)
+            .animate(onPlay: (ctrl) => ctrl.repeat())
+            .shimmer(
               duration: const Duration(milliseconds: 1500),
               color: c.surface3,
             ),
@@ -645,14 +646,17 @@ class _DetailSkeleton extends StatelessWidget {
               bar(w: 80, h: 16),
               SizedBox(height: context.spacing.space3),
               Container(
-                height: 144,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: c.surface2,
-                  borderRadius:
-                      BorderRadius.circular(context.radius.radiusCard),
-                ),
-              ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                    height: 144,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: c.surface2,
+                      borderRadius: BorderRadius.circular(
+                        context.radius.radiusCard,
+                      ),
+                    ),
+                  )
+                  .animate(onPlay: (ctrl) => ctrl.repeat())
+                  .shimmer(
                     duration: const Duration(milliseconds: 1500),
                     color: c.surface3,
                   ),

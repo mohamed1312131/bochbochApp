@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -10,6 +9,7 @@ import '../../../../core/utils/millimes_formatter.dart';
 import '../../../../shared/providers/user_name_provider.dart';
 import '../../../../shared/widgets/dido_button.dart';
 import '../../../../shared/widgets/dido_filter_chip.dart';
+import '../../../../shared/widgets/dido_product_image.dart';
 import '../../../../shared/widgets/stock_chip.dart';
 import '../../domain/product_models.dart';
 import '../providers/product_provider.dart';
@@ -27,8 +27,7 @@ class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
 
   @override
-  ConsumerState<ProductListScreen> createState() =>
-      _ProductListScreenState();
+  ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
 }
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
@@ -127,22 +126,23 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     DidoFilterChip(
                       label: 'Toutes',
                       selected: _filter == ProductListFilter.all,
-                      onTap: () => setState(
-                          () => _filter = ProductListFilter.all),
+                      onTap: () =>
+                          setState(() => _filter = ProductListFilter.all),
                     ),
                     const SizedBox(width: 8),
                     DidoFilterChip(
                       label: 'Bientôt en rupture',
                       selected: _filter == ProductListFilter.lowStock,
-                      onTap: () => setState(
-                          () => _filter = ProductListFilter.lowStock),
+                      onTap: () =>
+                          setState(() => _filter = ProductListFilter.lowStock),
                     ),
                     const SizedBox(width: 8),
                     DidoFilterChip(
                       label: 'En rupture',
                       selected: _filter == ProductListFilter.outOfStock,
                       onTap: () => setState(
-                          () => _filter = ProductListFilter.outOfStock),
+                        () => _filter = ProductListFilter.outOfStock,
+                      ),
                     ),
                   ],
                 ),
@@ -208,9 +208,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   List<ProductLean> _applyFilters(List<ProductLean> products) {
     Iterable<ProductLean> result = products;
     if (_query.isNotEmpty) {
-      result = result.where((p) =>
-          p.name.toLowerCase().contains(_query) ||
-          (p.category?.toLowerCase().contains(_query) ?? false));
+      result = result.where(
+        (p) =>
+            p.name.toLowerCase().contains(_query) ||
+            (p.category?.toLowerCase().contains(_query) ?? false),
+      );
     }
     switch (_filter) {
       case ProductListFilter.all:
@@ -376,10 +378,7 @@ class _SearchInput extends StatelessWidget {
 // Product grid (YSL-inspired — no card wrapper)
 // ════════════════════════════════════════════════════════════
 class _ProductGrid extends StatelessWidget {
-  const _ProductGrid({
-    required this.products,
-    required this.scrollController,
-  });
+  const _ProductGrid({required this.products, required this.scrollController});
 
   final List<ProductLean> products;
   final ScrollController scrollController;
@@ -425,19 +424,17 @@ class _ProductCard extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: c.surface2,
-                borderRadius:
-                    BorderRadius.circular(context.radius.radiusCard),
+                borderRadius: BorderRadius.circular(context.radius.radiusCard),
               ),
               clipBehavior: Clip.antiAlias,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   if (product.primaryImageUrl != null)
-                    CachedNetworkImage(
+                    DidoProductImage(
                       imageUrl: product.primaryImageUrl!,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => Center(
+                      errorBuilder: (_) => Center(
                         child: Icon(
                           Icons.inventory_2_outlined,
                           size: 32,
@@ -496,11 +493,7 @@ class _ProductCard extends StatelessWidget {
           ),
           if (product.totalStock <= 0) ...[
             SizedBox(height: context.spacing.space1),
-            _InlineStockBadge(
-              label: 'Rupture',
-              bg: c.coralTint12,
-              fg: c.redFg,
-            ),
+            _InlineStockBadge(label: 'Rupture', bg: c.coralTint12, fg: c.redFg),
           ] else if (product.hasLowStock) ...[
             SizedBox(height: context.spacing.space1),
             _InlineStockBadge(
@@ -638,13 +631,15 @@ class _ProductGridSkeleton extends StatelessWidget {
       itemBuilder: (_, __) {
         Widget bar({required double w, required double h}) {
           return Container(
-            width: w,
-            height: h,
-            decoration: BoxDecoration(
-              color: c.surface2,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
+                width: w,
+                height: h,
+                decoration: BoxDecoration(
+                  color: c.surface2,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              )
+              .animate(onPlay: (ctrl) => ctrl.repeat())
+              .shimmer(
                 duration: const Duration(milliseconds: 1500),
                 color: c.surface3,
               );
@@ -654,16 +649,20 @@ class _ProductGridSkeleton extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: c.surface2,
-                  borderRadius:
-                      BorderRadius.circular(context.radius.radiusCard),
-                ),
-              ).animate(onPlay: (ctrl) => ctrl.repeat()).shimmer(
-                    duration: const Duration(milliseconds: 1500),
-                    color: c.surface3,
-                  ),
+              child:
+                  Container(
+                        decoration: BoxDecoration(
+                          color: c.surface2,
+                          borderRadius: BorderRadius.circular(
+                            context.radius.radiusCard,
+                          ),
+                        ),
+                      )
+                      .animate(onPlay: (ctrl) => ctrl.repeat())
+                      .shimmer(
+                        duration: const Duration(milliseconds: 1500),
+                        color: c.surface3,
+                      ),
             ),
             SizedBox(height: context.spacing.space2),
             bar(w: 120, h: 14),
@@ -753,7 +752,6 @@ class _ScaleTapState extends State<_ScaleTap> {
   }
 }
 
-
 // TODO(chunk 10+): extract shared with `_ActiveBadge` (settings) and
 // `_StatusBadge` (home/orders) into
 // `lib/shared/widgets/inline_status_badge.dart`. Same surface1/coral
@@ -777,10 +775,7 @@ class _InlineStockBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(context.radius.radiusChip),
       ),
-      child: Text(
-        label,
-        style: context.typography.tabPill.copyWith(color: fg),
-      ),
+      child: Text(label, style: context.typography.tabPill.copyWith(color: fg)),
     );
   }
 }
